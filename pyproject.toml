@@ -13,6 +13,7 @@ aisbatch = "ai_slurm.cli.aisbatch:main"
 aiscancel = "ai_slurm.cli.aiscancel:main"
 aijobs = "ai_slurm.cli.aijobs:main"
 aitrack = "ai_slurm.cli.aitrack:main"
+aisummarize = "ai_slurm.cli.aisummarize:main"
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
