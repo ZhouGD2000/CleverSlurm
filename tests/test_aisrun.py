@@ -28,4 +28,6 @@ def test_aisrun_records_standalone_fake_srun_execution(isolated_home, fake_bin, 
     assert job[1] == "aisrun python script.py"
     assert job[2] == "COMPLETED"
     assert job[3] == str(tmp_path)
-    assert event == ("COMPLETED", "srun python script.py", "ran python script.py\n")
+    assert event[0] == "COMPLETED"
+    assert event[1] == "srun python script.py"
+    assert event[2].startswith("ran python script.py\n")

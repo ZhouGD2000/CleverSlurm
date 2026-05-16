@@ -13,13 +13,21 @@ def _parse_sacct_table(output: str) -> dict[str, dict[str, str]]:
     lines = [line for line in output.splitlines() if line.strip()]
     if not lines:
         return {}
-    headers = lines[0].split("|")
+    default_headers = ["JobID", "State", "ExitCode", "Elapsed", "MaxRSS", "NodeList"]
+    if lines[0].startswith("JobID|"):
+        headers = lines[0].split("|")
+        data_lines = lines[1:]
+    else:
+        headers = default_headers
+        data_lines = lines
     rows = {}
-    for line in lines[1:]:
+    for line in data_lines:
         values = line.split("|")
         if len(values) != len(headers):
             continue
         row = dict(zip(headers, values))
+        if "." in row["JobID"]:
+            continue
         rows[row["JobID"]] = row
     return rows
 

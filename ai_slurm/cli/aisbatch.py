@@ -24,6 +24,30 @@ def _parse_job_name(script_text: str) -> str | None:
     return None
 
 
+def _parse_sbatch_path(script_text: str, option: str) -> str | None:
+    long_prefix = f"#SBATCH --{option}"
+    short_prefix = "#SBATCH -o" if option == "output" else "#SBATCH -e"
+    for line in script_text.splitlines():
+        stripped = line.strip()
+        if stripped.startswith(long_prefix + "="):
+            return stripped.split("=", 1)[1].strip()
+        if stripped.startswith(long_prefix + " "):
+            return stripped.split(None, 2)[2].strip()
+        if stripped.startswith(short_prefix + " "):
+            return stripped.split(None, 2)[2].strip()
+    return None
+
+
+def _resolve_sbatch_path(path_text: str | None, script_dir: Path, job_id: str) -> str | None:
+    if not path_text:
+        return None
+    expanded = path_text.replace("%j", job_id).replace("%A", job_id)
+    path = Path(expanded).expanduser()
+    if not path.is_absolute():
+        path = script_dir / path
+    return str(path.resolve())
+
+
 def _instrument_script(original: str) -> str:
     prelude = """\
 export AI_SLURM_JOB_ID="${SLURM_JOB_ID:-unknown}"
@@ -33,9 +57,12 @@ export PATH="$HOME/.ai-slurm/wrappers:$PATH"
 mkdir -p "$AI_SLURM_LOG_DIR"
 """
     lines = original.splitlines()
+    insert_at = 0
     if lines and lines[0].startswith("#!"):
-        return "\n".join([lines[0], prelude, *lines[1:]]) + "\n"
-    return prelude + original
+        insert_at = 1
+    while insert_at < len(lines) and lines[insert_at].strip().startswith("#SBATCH"):
+        insert_at += 1
+    return "\n".join([*lines[:insert_at], prelude, *lines[insert_at:]]) + "\n"
 
 
 def submit_batch(argv: list[str]) -> str:
@@ -70,6 +97,8 @@ def submit_batch(argv: list[str]) -> str:
     git_meta = collect_git_metadata(Path.cwd())
     (job_dir / "git_status.txt").write_text(git_meta.status)
     (job_dir / "git.diff").write_text(git_meta.diff)
+    stdout_path = _resolve_sbatch_path(_parse_sbatch_path(script_text, "output"), script.parent, job_id)
+    stderr_path = _resolve_sbatch_path(_parse_sbatch_path(script_text, "error"), script.parent, job_id)
 
     with connect() as conn:
         init_db(conn)
@@ -77,8 +106,9 @@ def submit_batch(argv: list[str]) -> str:
             """
             insert or replace into jobs (
               job_id, submitted_at, submit_cwd, command, original_script_path,
-              copied_script_path, job_name, git_commit, git_dirty, state, created_at, updated_at
-            ) values (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+              copied_script_path, job_name, stdout_path, stderr_path, git_commit, git_dirty,
+              state, created_at, updated_at
+            ) values (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
             """,
             (
                 job_id,
@@ -88,6 +118,8 @@ def submit_batch(argv: list[str]) -> str:
                 str(script),
                 str(copied_instrumented),
                 _parse_job_name(script_text),
+                stdout_path,
+                stderr_path,
                 git_meta.commit,
                 1 if git_meta.dirty else 0,
                 "UNKNOWN",
@@ -109,3 +141,7 @@ def submit_batch(argv: list[str]) -> str:
 
 def main() -> None:
     print(submit_batch(os.sys.argv[1:]))
+
+
+if __name__ == "__main__":
+    main()
