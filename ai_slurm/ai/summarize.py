@@ -39,8 +39,15 @@ def _job_facts(conn, job_id: str) -> dict:
     }
 
 
-def summarize_submission(job_id: str, *, client: SiliconFlowClient | None = None) -> dict:
-    client = client or SiliconFlowClient()
+def summarize_submission(
+    job_id: str,
+    *,
+    client: SiliconFlowClient | None = None,
+    model: str | None = None,
+    max_tokens: int | None = None,
+    enable_thinking: bool | None = None,
+) -> dict:
+    client = client or SiliconFlowClient(model=model, max_tokens=max_tokens, enable_thinking=enable_thinking)
     with connect() as conn:
         init_db(conn)
         facts = _job_facts(conn, job_id)
@@ -59,8 +66,15 @@ def summarize_submission(job_id: str, *, client: SiliconFlowClient | None = None
         return summary
 
 
-def summarize_completion(job_id: str, *, client: SiliconFlowClient | None = None) -> dict:
-    client = client or SiliconFlowClient()
+def summarize_completion(
+    job_id: str,
+    *,
+    client: SiliconFlowClient | None = None,
+    model: str | None = None,
+    max_tokens: int | None = None,
+    enable_thinking: bool | None = None,
+) -> dict:
+    client = client or SiliconFlowClient(model=model, max_tokens=max_tokens, enable_thinking=enable_thinking)
     with connect() as conn:
         init_db(conn)
         facts = _job_facts(conn, job_id)

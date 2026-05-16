@@ -53,3 +53,17 @@ def ai_model() -> str:
         or load_config().get("ai", {}).get("model")
         or "Qwen/Qwen3.5-4B"
     )
+
+
+def ai_max_tokens() -> int:
+    value = os.environ.get("AI_SLURM_AI_MAX_TOKENS") or load_config().get("ai", {}).get("max_tokens")
+    if value is None:
+        return 512
+    return int(value)
+
+
+def ai_enable_thinking() -> bool | None:
+    value = os.environ.get("AI_SLURM_AI_ENABLE_THINKING") or load_config().get("ai", {}).get("enable_thinking")
+    if value is None:
+        return None
+    return value.lower() in {"1", "true", "yes", "on"}

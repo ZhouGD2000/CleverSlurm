@@ -36,7 +36,7 @@ def test_siliconflow_client_posts_chat_completion_request():
             }
         )
 
-    client = SiliconFlowClient(api_key="secret", urlopen=fake_urlopen)
+    client = SiliconFlowClient(api_key="secret", model="Qwen/Qwen3.5-4B", urlopen=fake_urlopen)
     content = client.chat_json(
         [
             {"role": "system", "content": "Return JSON."},
@@ -48,8 +48,41 @@ def test_siliconflow_client_posts_chat_completion_request():
     assert captured["url"] == "https://api.siliconflow.cn/v1/chat/completions"
     assert captured["headers"]["Authorization"] == "Bearer secret"
     assert captured["body"]["model"] == "Qwen/Qwen3.5-4B"
-    assert captured["body"]["enable_thinking"] is False
+    assert captured["body"]["max_tokens"] == 512
+    assert "enable_thinking" not in captured["body"]
     assert captured["body"]["response_format"] == {"type": "json_object"}
+
+
+def test_siliconflow_client_allows_model_and_max_tokens_override():
+    captured = {}
+
+    def fake_urlopen(request, timeout):
+        captured["body"] = json.loads(request.data.decode())
+        return FakeResponse({"choices": [{"message": {"content": '{"ok":true}'}}]})
+
+    client = SiliconFlowClient(
+        api_key="secret",
+        model="Qwen/Qwen2.5-7B-Instruct",
+        max_tokens=64,
+        urlopen=fake_urlopen,
+    )
+    client.chat_json([{"role": "user", "content": "x"}])
+
+    assert captured["body"]["model"] == "Qwen/Qwen2.5-7B-Instruct"
+    assert captured["body"]["max_tokens"] == 64
+
+
+def test_siliconflow_client_can_send_enable_thinking_when_requested():
+    captured = {}
+
+    def fake_urlopen(request, timeout):
+        captured["body"] = json.loads(request.data.decode())
+        return FakeResponse({"choices": [{"message": {"content": '{"ok":true}'}}]})
+
+    client = SiliconFlowClient(api_key="secret", enable_thinking=False, urlopen=fake_urlopen)
+    client.chat_json([{"role": "user", "content": "x"}])
+
+    assert captured["body"]["enable_thinking"] is False
 
 
 def test_siliconflow_client_raises_useful_error_on_http_failure():

@@ -3,7 +3,7 @@ import urllib.error
 import urllib.request
 from collections.abc import Callable
 
-from ai_slurm.config import ai_api_key, ai_model
+from ai_slurm.config import ai_api_key, ai_enable_thinking, ai_max_tokens, ai_model
 
 
 SILICONFLOW_CHAT_COMPLETIONS_URL = "https://api.siliconflow.cn/v1/chat/completions"
@@ -15,6 +15,8 @@ class SiliconFlowClient:
         *,
         api_key: str | None = None,
         model: str | None = None,
+        max_tokens: int | None = None,
+        enable_thinking: bool | None = None,
         base_url: str = SILICONFLOW_CHAT_COMPLETIONS_URL,
         timeout: int = 60,
         urlopen: Callable | None = None,
@@ -25,6 +27,8 @@ class SiliconFlowClient:
                 "Missing SiliconFlow API key. Set SILICONFLOW_API_KEY or [ai].api_key in ~/.ai-slurm/config.toml."
             )
         self.model = model or ai_model()
+        self.max_tokens = max_tokens or ai_max_tokens()
+        self.enable_thinking = ai_enable_thinking() if enable_thinking is None else enable_thinking
         self.base_url = base_url
         self.timeout = timeout
         self.urlopen = urlopen or urllib.request.urlopen
@@ -35,10 +39,11 @@ class SiliconFlowClient:
             "messages": messages,
             "temperature": 0.2,
             "top_p": 0.7,
-            "max_tokens": 2048,
-            "enable_thinking": False,
+            "max_tokens": self.max_tokens,
             "response_format": {"type": "json_object"},
         }
+        if self.enable_thinking is not None:
+            payload["enable_thinking"] = self.enable_thinking
         request = urllib.request.Request(
             self.base_url,
             data=json.dumps(payload).encode(),
