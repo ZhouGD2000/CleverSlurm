@@ -94,6 +94,34 @@ def list_commands(job_id: str, limit: int = 100) -> str:
     )
 
 
+def _tail_file(path: str, line_count: int) -> str:
+    try:
+        lines = open(path).read().splitlines()
+    except FileNotFoundError:
+        return f"<missing: {path}>"
+    return "\n".join(lines[-line_count:])
+
+
+def show_logs(job_id: str, tail: int = 200) -> str:
+    with connect() as conn:
+        init_db(conn)
+        row = conn.execute(
+            "select stdout_path, stderr_path from jobs where job_id = ?",
+            (job_id,),
+        ).fetchone()
+    if row is None:
+        raise KeyError(f"job not found: {job_id}")
+
+    sections = []
+    if row["stdout_path"]:
+        sections.append("== stdout ==\n" + _tail_file(row["stdout_path"], tail))
+    if row["stderr_path"]:
+        sections.append("== stderr ==\n" + _tail_file(row["stderr_path"], tail))
+    if not sections:
+        return f"No stdout/stderr paths recorded for job {job_id}"
+    return "\n".join(sections)
+
+
 def main() -> None:
     import argparse
 
@@ -112,6 +140,9 @@ def main() -> None:
     commands = subparsers.add_parser("commands")
     commands.add_argument("job_id")
     commands.add_argument("-n", "--limit", type=int, default=100)
+    logs = subparsers.add_parser("logs")
+    logs.add_argument("job_id")
+    logs.add_argument("--tail", type=int, default=200)
     args = parser.parse_args()
 
     if args.command == "show":
@@ -124,3 +155,5 @@ def main() -> None:
         print(list_files(args.job_id, args.limit))
     elif args.command == "commands":
         print(list_commands(args.job_id, args.limit))
+    elif args.command == "logs":
+        print(show_logs(args.job_id, args.tail))

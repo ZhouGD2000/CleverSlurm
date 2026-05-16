@@ -1,5 +1,5 @@
 from ai_slurm.db import connect, init_db
-from ai_slurm.cli.aijobs import list_commands, list_events, list_files, show_job
+from ai_slurm.cli.aijobs import list_commands, list_events, list_files, show_job, show_logs
 
 
 def test_aijobs_show_returns_job_metadata(isolated_home):
@@ -40,3 +40,24 @@ def test_aijobs_events_files_and_commands_return_tables(isolated_home):
     assert "entry_file" in list_files("123456")
     assert "julia" in list_commands("123456")
     assert "/bin/julia" in list_commands("123456")
+
+
+def test_aijobs_logs_tails_recorded_stdout_and_stderr(isolated_home, tmp_path):
+    stdout = tmp_path / "job.out"
+    stderr = tmp_path / "job.err"
+    stdout.write_text("out1\nout2\nout3\n")
+    stderr.write_text("err1\nerr2\n")
+    with connect() as conn:
+        init_db(conn)
+        conn.execute(
+            "insert into jobs (job_id, stdout_path, stderr_path, created_at, updated_at) "
+            "values ('123456', ?, ?, 't', 't')",
+            (str(stdout), str(stderr)),
+        )
+
+    text = show_logs("123456", tail=2)
+
+    assert "== stdout ==" in text
+    assert "out2\nout3" in text
+    assert "== stderr ==" in text
+    assert "err1\nerr2" in text
