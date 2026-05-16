@@ -1,6 +1,7 @@
 from datetime import datetime, timezone
 
 from ai_slurm.db import connect, init_db
+from ai_slurm.runtime.ingest import ingest_runtime_commands
 from ai_slurm.slurm.commands import run_slurm_command
 
 
@@ -49,6 +50,7 @@ def track_once() -> None:
         rows = _parse_sacct_table(result.stdout)
         timestamp = _now()
         for job in jobs:
+            ingest_runtime_commands(conn, job["job_id"])
             row = rows.get(job["job_id"])
             if not row:
                 continue
