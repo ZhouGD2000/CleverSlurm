@@ -1,0 +1,16 @@
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "ai-slurm"
+version = "0.1.0"
+description = "Deterministic Slurm job tracking helpers with fake-Slurm-testable command wrappers."
+requires-python = ">=3.10"
+
+[project.scripts]
+aisbatch = "ai_slurm.cli.aisbatch:main"
+aiscancel = "ai_slurm.cli.aiscancel:main"
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
