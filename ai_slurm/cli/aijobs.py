@@ -27,3 +27,20 @@ def recent_jobs(limit: int = 10) -> str:
         f"{row['job_id']}\t{row['state'] or ''}\t{row['job_name'] or ''}\t{row['command'] or ''}"
         for row in rows
     )
+
+
+def main() -> None:
+    import argparse
+
+    parser = argparse.ArgumentParser(prog="aijobs")
+    subparsers = parser.add_subparsers(dest="command", required=True)
+    show = subparsers.add_parser("show")
+    show.add_argument("job_id")
+    recent = subparsers.add_parser("recent")
+    recent.add_argument("-n", "--limit", type=int, default=10)
+    args = parser.parse_args()
+
+    if args.command == "show":
+        print(show_job(args.job_id))
+    elif args.command == "recent":
+        print(recent_jobs(args.limit))

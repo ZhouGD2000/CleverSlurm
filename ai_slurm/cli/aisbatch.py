@@ -4,6 +4,7 @@ import shutil
 from datetime import datetime, timezone
 from pathlib import Path
 
+from ai_slurm.collect.git import collect_git_metadata
 from ai_slurm.config import root_dir
 from ai_slurm.db import connect, init_db
 from ai_slurm.slurm.commands import run_slurm_command
@@ -66,6 +67,9 @@ def submit_batch(argv: list[str]) -> str:
     copied_instrumented = job_dir / "instrumented.slurm"
     shutil.copyfile(script, copied_original)
     shutil.copyfile(prepared_script, copied_instrumented)
+    git_meta = collect_git_metadata(Path.cwd())
+    (job_dir / "git_status.txt").write_text(git_meta.status)
+    (job_dir / "git.diff").write_text(git_meta.diff)
 
     with connect() as conn:
         init_db(conn)
@@ -73,8 +77,8 @@ def submit_batch(argv: list[str]) -> str:
             """
             insert or replace into jobs (
               job_id, submitted_at, submit_cwd, command, original_script_path,
-              copied_script_path, job_name, state, created_at, updated_at
-            ) values (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+              copied_script_path, job_name, git_commit, git_dirty, state, created_at, updated_at
+            ) values (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
             """,
             (
                 job_id,
@@ -84,6 +88,8 @@ def submit_batch(argv: list[str]) -> str:
                 str(script),
                 str(copied_instrumented),
                 _parse_job_name(script_text),
+                git_meta.commit,
+                1 if git_meta.dirty else 0,
                 "UNKNOWN",
                 submitted_at,
                 submitted_at,

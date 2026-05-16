@@ -47,6 +47,35 @@ CREATE TABLE IF NOT EXISTS job_events (
   note TEXT,
   raw_output TEXT
 );
+
+CREATE TABLE IF NOT EXISTS job_commands (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  job_id TEXT,
+  step_id TEXT,
+  time TEXT,
+  hostname TEXT,
+  cwd TEXT,
+  kind TEXT,
+  executable TEXT,
+  argv TEXT,
+  entry_file TEXT,
+  entry_file_abs TEXT,
+  source TEXT
+);
+
+CREATE TABLE IF NOT EXISTS job_files (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  job_id TEXT,
+  command_id INTEGER,
+  path TEXT,
+  relpath TEXT,
+  sha256 TEXT,
+  size INTEGER,
+  role TEXT,
+  source TEXT,
+  copied INTEGER,
+  confidence REAL
+);
 """
 
 
