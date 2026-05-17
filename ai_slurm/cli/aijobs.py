@@ -124,6 +124,7 @@ def show_logs(job_id: str, tail: int = 200) -> str:
 
 def main() -> None:
     import argparse
+    from ai_slurm.ai.ask import answer_question
 
     parser = argparse.ArgumentParser(prog="aijobs")
     subparsers = parser.add_subparsers(dest="command", required=True)
@@ -143,6 +144,9 @@ def main() -> None:
     logs = subparsers.add_parser("logs")
     logs.add_argument("job_id")
     logs.add_argument("--tail", type=int, default=200)
+    ask = subparsers.add_parser("ask")
+    ask.add_argument("question")
+    ask.add_argument("-n", "--limit", type=int, default=10)
     args = parser.parse_args()
 
     if args.command == "show":
@@ -157,6 +161,8 @@ def main() -> None:
         print(list_commands(args.job_id, args.limit))
     elif args.command == "logs":
         print(show_logs(args.job_id, args.tail))
+    elif args.command == "ask":
+        print(answer_question(args.question, limit=args.limit))
 
 
 if __name__ == "__main__":

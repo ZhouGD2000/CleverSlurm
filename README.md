@@ -10,7 +10,7 @@ The design rule is simple: deterministic code records facts; AI only summarizes 
 - `aisrun`: wraps direct `srun` execution and records a standalone local job record when outside an existing allocation.
 - `aiscancel`: wraps `scancel` for one job and records a cancellation request event with an optional note.
 - `aitrack`: polls `sacct` for known jobs and updates state, exit code, elapsed time, memory, and node list.
-- `aijobs`: queries recent jobs, job details, events, files, runtime commands, and log tails.
+- `aijobs`: queries recent jobs, job details, events, files, runtime commands, log tails, and AI answers over recent job facts.
 - `aisummarize`: sends curated job facts to SiliconFlow and stores structured AI summaries.
 - Runtime command ingestion: imports JSONL records from `commands.log` into `job_commands`.
 - Local fake-Slurm tests: the test suite does not require Slurm.
@@ -81,6 +81,7 @@ aijobs events 46644
 aijobs files 46644
 aijobs commands 46644
 aijobs logs 46644 --tail 100
+aijobs ask "最近完成了什么任务？都是些什么工作？"
 ```
 
 Run a direct Slurm command:
@@ -102,6 +103,15 @@ Temporarily override the AI model:
 aisummarize 46644 --model Qwen/Qwen3.5-4B --max-tokens 512
 ```
 
+Ask AI about recent jobs:
+
+```bash
+aijobs ask "最近完成了什么任务？都是些什么工作？"
+aijobs ask "最近失败的任务有哪些，原因是什么？" -n 20
+```
+
+`aijobs ask` sends only recorded database facts to the model. It does not ask AI to infer Slurm job ids, states, exit codes, paths, or commands from memory.
+
 ## Safety Notes
 
 - `aiscancel` only cancels the job id you pass. There is no batch-cancel command in this repository.
@@ -118,6 +128,6 @@ python3 -m pytest -q
 python3 -m compileall -q ai_slurm
 ```
 
-The current suite covers fake `sbatch`, fake `srun`, fake `sacct`, fake `scancel`, SQLite writes, runtime command ingestion, Julia include parsing, snapshots, AI request construction, and query CLI helpers.
+The current suite covers fake `sbatch`, fake `srun`, fake `sacct`, fake `scancel`, SQLite writes, runtime command ingestion, Julia include parsing, snapshots, AI request construction, AI question answering over job facts, and query CLI helpers.
 
 See [docs/testing.md](docs/testing.md) and [docs/configuration.md](docs/configuration.md).

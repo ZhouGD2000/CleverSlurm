@@ -72,6 +72,14 @@ or:
 aisummarize 46644 --enable-thinking
 ```
 
+The same AI configuration is used by:
+
+```bash
+aijobs ask "最近完成了什么任务？都是些什么工作？"
+```
+
+`aijobs ask` builds a JSON context from recent SQLite job records, then asks the configured model to answer from that context only.
+
 ## Recommended Permissions
 
 The config may contain an API key, so keep it private:

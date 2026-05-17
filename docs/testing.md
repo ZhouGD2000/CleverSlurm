@@ -23,6 +23,7 @@ The tests cover:
 - fake `sacct` tracker updates, including no-header `sacct -n` output
 - runtime `commands.log` ingestion
 - `aijobs` details, events, files, commands, and logs
+- `aijobs ask` with a fake AI client over recent job facts
 - Julia static `include(...)` parsing
 - content-addressed file storage
 - large-file metadata policy
