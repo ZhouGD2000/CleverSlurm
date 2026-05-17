@@ -1,3 +1,6 @@
+import subprocess
+import sys
+
 from ai_slurm.db import connect, init_db
 from ai_slurm.cli.aijobs import list_commands, list_events, list_files, show_job, show_logs
 
@@ -16,6 +19,26 @@ def test_aijobs_show_returns_job_metadata(isolated_home):
     assert "state: COMPLETED" in text
     assert "job_name: test-job" in text
     assert "command: aisbatch job.slurm" in text
+
+
+def test_aijobs_module_entrypoint_runs_main(isolated_home):
+    with connect() as conn:
+        init_db(conn)
+        conn.execute(
+            "insert into jobs (job_id, submitted_at, submit_cwd, command, job_name, state, exit_code, created_at, updated_at) "
+            "values ('123456', '2026-05-17T01:02:03', '/work/project', 'aisbatch job.slurm', 'test-job', 'COMPLETED', '0:0', 't', 't')"
+        )
+
+    result = subprocess.run(
+        [sys.executable, "-m", "ai_slurm.cli.aijobs", "show", "123456"],
+        text=True,
+        stdout=subprocess.PIPE,
+        stderr=subprocess.PIPE,
+        check=True,
+    )
+
+    assert "Job 123456" in result.stdout
+    assert "state: COMPLETED" in result.stdout
 
 
 def test_aijobs_events_files_and_commands_return_tables(isolated_home):

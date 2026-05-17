@@ -157,3 +157,7 @@ def main() -> None:
         print(list_commands(args.job_id, args.limit))
     elif args.command == "logs":
         print(show_logs(args.job_id, args.tail))
+
+
+if __name__ == "__main__":
+    main()

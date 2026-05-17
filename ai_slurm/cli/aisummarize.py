@@ -36,3 +36,7 @@ def main() -> None:
             enable_thinking=True if args.enable_thinking else None,
         )
     print(json.dumps(summary, ensure_ascii=False, indent=2, sort_keys=True))
+
+
+if __name__ == "__main__":
+    main()

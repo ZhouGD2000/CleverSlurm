@@ -42,3 +42,7 @@ def cancel_job(argv: list[str]) -> None:
 
 def main() -> None:
     cancel_job(os.sys.argv[1:])
+
+
+if __name__ == "__main__":
+    main()

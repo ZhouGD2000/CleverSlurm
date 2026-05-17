@@ -61,3 +61,7 @@ def main() -> None:
     if result.stderr:
         print(result.stderr, end="", file=os.sys.stderr)
     raise SystemExit(result.returncode)
+
+
+if __name__ == "__main__":
+    main()
