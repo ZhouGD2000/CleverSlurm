@@ -57,6 +57,7 @@ Local config file:
 api_key = "..."
 model = "Qwen/Qwen3.5-4B"
 max_tokens = "512"
+auto_summary = "true"
 ```
 
 `enable_thinking` is not sent by default because some SiliconFlow models reject it. Enable it only for models that support it:
@@ -79,6 +80,19 @@ aijobs ask "最近完成了什么任务？都是些什么工作？"
 ```
 
 `aijobs ask` builds a JSON context from recent SQLite job records, then asks the configured model to answer from that context only.
+
+`aisbatch` triggers a submission summary automatically after it records a successful submission. If the AI request fails, the job submission still succeeds and an `AI_SUMMARY_FAILED` event is recorded. Disable automatic summaries when needed:
+
+```bash
+export AI_SLURM_AI_AUTO_SUMMARY=false
+```
+
+or:
+
+```toml
+[ai]
+auto_summary = "false"
+```
 
 ## Recommended Permissions
 

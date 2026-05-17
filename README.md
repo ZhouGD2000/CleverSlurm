@@ -54,6 +54,7 @@ Example `~/.ai-slurm/config.toml`:
 api_key = "..."
 model = "Qwen/Qwen3.5-4B"
 max_tokens = "512"
+auto_summary = "true"
 ```
 
 Do not commit API keys.
@@ -67,6 +68,8 @@ aisbatch job.slurm
 aisbatch -p CPU2 --time=00:01:00 job.slurm arg1 arg2
 aisbatch -p CPU2 --wrap "hostname && python3 script.py"
 ```
+
+After a successful submission, `aisbatch` automatically triggers an AI submission summary and stores it in `summary_json`. If the AI request fails, submission still succeeds and `aijobs events <job_id>` will show `AI_SUMMARY_FAILED`.
 
 Track known jobs:
 

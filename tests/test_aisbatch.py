@@ -5,7 +5,12 @@ import sys
 from conftest import write_executable
 
 
-def test_aisbatch_records_fake_sbatch_job_id_and_copies_scripts(isolated_home, fake_bin, tmp_path):
+def _disable_auto_summary(monkeypatch):
+    monkeypatch.setenv("AI_SLURM_AI_AUTO_SUMMARY", "false")
+
+
+def test_aisbatch_records_fake_sbatch_job_id_and_copies_scripts(isolated_home, fake_bin, tmp_path, monkeypatch):
+    _disable_auto_summary(monkeypatch)
     write_executable(
         fake_bin / "sbatch",
         "#!/bin/sh\nprintf '123456\\n'\n",
@@ -42,7 +47,8 @@ def test_aisbatch_records_fake_sbatch_job_id_and_copies_scripts(isolated_home, f
     assert event == ("SUBMITTED", "123456\n")
 
 
-def test_aisbatch_records_stdout_and_stderr_paths_with_job_id(isolated_home, fake_bin, tmp_path):
+def test_aisbatch_records_stdout_and_stderr_paths_with_job_id(isolated_home, fake_bin, tmp_path, monkeypatch):
+    _disable_auto_summary(monkeypatch)
     write_executable(fake_bin / "sbatch", "#!/bin/sh\nprintf '123456\\n'\n")
     script = tmp_path / "job.slurm"
     script.write_text(
@@ -62,7 +68,8 @@ def test_aisbatch_records_stdout_and_stderr_paths_with_job_id(isolated_home, fak
     assert row == (str(tmp_path / "logs" / "smoke-123456.out"), str(tmp_path / "logs" / "smoke-123456.err"))
 
 
-def test_aisbatch_passes_sbatch_options_and_script_args_to_real_sbatch(isolated_home, fake_bin, tmp_path):
+def test_aisbatch_passes_sbatch_options_and_script_args_to_real_sbatch(isolated_home, fake_bin, tmp_path, monkeypatch):
+    _disable_auto_summary(monkeypatch)
     calls = tmp_path / "sbatch.calls"
     write_executable(
         fake_bin / "sbatch",
@@ -81,7 +88,8 @@ def test_aisbatch_passes_sbatch_options_and_script_args_to_real_sbatch(isolated_
     assert called_args[5:] == ["arg1", "arg2"]
 
 
-def test_aisbatch_does_not_treat_chdir_argument_as_script(isolated_home, fake_bin, tmp_path):
+def test_aisbatch_does_not_treat_chdir_argument_as_script(isolated_home, fake_bin, tmp_path, monkeypatch):
+    _disable_auto_summary(monkeypatch)
     calls = tmp_path / "sbatch.calls"
     chdir = tmp_path / "work"
     chdir.mkdir()
@@ -101,7 +109,8 @@ def test_aisbatch_does_not_treat_chdir_argument_as_script(isolated_home, fake_bi
     assert called_args[3].endswith("job.instrumented.slurm")
 
 
-def test_aisbatch_wrap_is_translated_to_instrumented_script(isolated_home, fake_bin, tmp_path):
+def test_aisbatch_wrap_is_translated_to_instrumented_script(isolated_home, fake_bin, tmp_path, monkeypatch):
+    _disable_auto_summary(monkeypatch)
     calls = tmp_path / "sbatch.calls"
     write_executable(
         fake_bin / "sbatch",
@@ -120,7 +129,8 @@ def test_aisbatch_wrap_is_translated_to_instrumented_script(isolated_home, fake_
     assert "PROGRAM_FINISHED" in instrumented
 
 
-def test_aisbatch_instrumented_script_records_program_finish(isolated_home, fake_bin, tmp_path):
+def test_aisbatch_instrumented_script_records_program_finish(isolated_home, fake_bin, tmp_path, monkeypatch):
+    _disable_auto_summary(monkeypatch)
     write_executable(fake_bin / "sbatch", "#!/bin/sh\nprintf '123456\\n'\n")
     script = tmp_path / "job.slurm"
     script.write_text("#!/bin/bash\n#SBATCH --job-name=test-job\npython run.py\n")
@@ -135,7 +145,8 @@ def test_aisbatch_instrumented_script_records_program_finish(isolated_home, fake
     assert "PROGRAM_FINISHED" in instrumented
 
 
-def test_aisbatch_module_entrypoint_runs_main(isolated_home, fake_bin, tmp_path):
+def test_aisbatch_module_entrypoint_runs_main(isolated_home, fake_bin, tmp_path, monkeypatch):
+    _disable_auto_summary(monkeypatch)
     write_executable(fake_bin / "sbatch", "#!/bin/sh\nprintf '123456\\n'\n")
     script = tmp_path / "job.slurm"
     script.write_text("#!/bin/bash\nhostname\n")
@@ -151,7 +162,8 @@ def test_aisbatch_module_entrypoint_runs_main(isolated_home, fake_bin, tmp_path)
     assert result.stdout == "Submitted batch job 123456\n"
 
 
-def test_aisbatch_module_entrypoint_preserves_parsable_output(isolated_home, fake_bin, tmp_path):
+def test_aisbatch_module_entrypoint_preserves_parsable_output(isolated_home, fake_bin, tmp_path, monkeypatch):
+    _disable_auto_summary(monkeypatch)
     write_executable(fake_bin / "sbatch", "#!/bin/sh\nprintf '123456\\n'\n")
     script = tmp_path / "job.slurm"
     script.write_text("#!/bin/bash\nhostname\n")
@@ -165,3 +177,66 @@ def test_aisbatch_module_entrypoint_preserves_parsable_output(isolated_home, fak
     )
 
     assert result.stdout == "123456\n"
+
+
+def test_aisbatch_triggers_submission_summary_after_recording_job(isolated_home, fake_bin, tmp_path, monkeypatch):
+    write_executable(fake_bin / "sbatch", "#!/bin/sh\nprintf '123456\\n'\n")
+    script = tmp_path / "job.slurm"
+    script.write_text("#!/bin/bash\nhostname\n")
+    calls = []
+
+    def fake_auto_summarize(job_id):
+        calls.append(job_id)
+        with sqlite3.connect(isolated_home / "db.sqlite") as conn:
+            conn.execute(
+                "update jobs set summary_json = ? where job_id = ?",
+                ('{"one_line_summary":"auto summary"}', job_id),
+            )
+            conn.execute(
+                "insert into job_events (job_id, event_type, raw_output) values (?, ?, ?)",
+                (job_id, "AI_SUMMARY_CREATED", '{"one_line_summary":"auto summary"}'),
+            )
+            conn.commit()
+        return "created"
+
+    monkeypatch.setattr("ai_slurm.cli.aisbatch.auto_summarize_submission", fake_auto_summarize)
+
+    from ai_slurm.cli.aisbatch import submit_batch
+
+    submit_batch([str(script)])
+
+    assert calls == ["123456"]
+    with sqlite3.connect(isolated_home / "db.sqlite") as conn:
+        row = conn.execute("select summary_json from jobs where job_id = '123456'").fetchone()
+        events = conn.execute(
+            "select event_type from job_events where job_id = '123456' order by id"
+        ).fetchall()
+
+    assert row[0] == '{"one_line_summary":"auto summary"}'
+    assert [event[0] for event in events] == ["SUBMITTED", "AI_SUMMARY_CREATED"]
+
+
+def test_aisbatch_records_summary_failure_without_breaking_submission(isolated_home, fake_bin, tmp_path, monkeypatch):
+    write_executable(fake_bin / "sbatch", "#!/bin/sh\nprintf '123456\\n'\n")
+    script = tmp_path / "job.slurm"
+    script.write_text("#!/bin/bash\nhostname\n")
+
+    def fake_auto_summarize(job_id):
+        from ai_slurm.ai.auto import record_auto_summary_failure
+        record_auto_summary_failure(job_id, RuntimeError("temporary AI failure"))
+        return "failed"
+
+    monkeypatch.setattr("ai_slurm.cli.aisbatch.auto_summarize_submission", fake_auto_summarize)
+
+    from ai_slurm.cli.aisbatch import submit_batch
+
+    job_id = submit_batch([str(script)])
+
+    assert job_id == "123456"
+    with sqlite3.connect(isolated_home / "db.sqlite") as conn:
+        event = conn.execute(
+            "select event_type, raw_output from job_events where job_id = '123456' and event_type = 'AI_SUMMARY_FAILED'"
+        ).fetchone()
+
+    assert event[0] == "AI_SUMMARY_FAILED"
+    assert "temporary AI failure" in event[1]

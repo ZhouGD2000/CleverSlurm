@@ -6,6 +6,7 @@ from datetime import datetime, timezone
 from pathlib import Path
 
 from ai_slurm.collect.git import collect_git_metadata
+from ai_slurm.ai.auto import auto_summarize_submission
 from ai_slurm.config import root_dir
 from ai_slurm.db import connect, init_db
 from ai_slurm.slurm.commands import run_slurm_command
@@ -286,6 +287,7 @@ def submit_batch_result(argv: list[str]) -> BatchSubmission:
         )
         conn.commit()
 
+    auto_summarize_submission(job_id)
     return BatchSubmission(job_id=job_id, user_parsable=parsed.user_parsable, stderr=result.stderr)
 
 

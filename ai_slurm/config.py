@@ -67,3 +67,10 @@ def ai_enable_thinking() -> bool | None:
     if value is None:
         return None
     return value.lower() in {"1", "true", "yes", "on"}
+
+
+def ai_auto_summary_enabled() -> bool:
+    value = os.environ.get("AI_SLURM_AI_AUTO_SUMMARY") or load_config().get("ai", {}).get("auto_summary")
+    if value is None:
+        return True
+    return value.lower() in {"1", "true", "yes", "on"}
