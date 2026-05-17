@@ -1,5 +1,7 @@
 import os
 import shutil
+import sys
+from dataclasses import dataclass
 from datetime import datetime, timezone
 from pathlib import Path
 
@@ -7,6 +9,87 @@ from ai_slurm.collect.git import collect_git_metadata
 from ai_slurm.config import root_dir
 from ai_slurm.db import connect, init_db
 from ai_slurm.slurm.commands import run_slurm_command
+
+
+SBATCH_LONG_OPTIONS_WITH_ARG = {
+    "account",
+    "array",
+    "begin",
+    "chdir",
+    "cluster-constraint",
+    "clusters",
+    "comment",
+    "constraint",
+    "container",
+    "container-id",
+    "cores-per-socket",
+    "cpu-bind",
+    "cpus-per-gpu",
+    "cpus-per-task",
+    "dependency",
+    "distribution",
+    "error",
+    "exclude",
+    "export",
+    "export-file",
+    "extra-node-info",
+    "gid",
+    "gpus",
+    "gpus-per-node",
+    "gpus-per-socket",
+    "gpus-per-task",
+    "gres",
+    "gres-flags",
+    "hint",
+    "input",
+    "job-name",
+    "licenses",
+    "mail-type",
+    "mail-user",
+    "mem",
+    "mem-bind",
+    "mem-per-cpu",
+    "mem-per-gpu",
+    "mincpus",
+    "nodes",
+    "nodelist",
+    "ntasks",
+    "ntasks-per-core",
+    "ntasks-per-gpu",
+    "ntasks-per-node",
+    "ntasks-per-socket",
+    "open-mode",
+    "output",
+    "partition",
+    "qos",
+    "reservation",
+    "signal",
+    "sockets-per-node",
+    "threads-per-core",
+    "time",
+    "time-min",
+    "uid",
+    "wckey",
+    "wrap",
+}
+
+SBATCH_SHORT_OPTIONS_WITH_ARG = set("AacCDeEJLNnopqtuwx")
+
+
+@dataclass(frozen=True)
+class ParsedSbatchInvocation:
+    passthrough_args: list[str]
+    script_args: list[str]
+    script_path: Path | None
+    wrap_command: str | None
+    user_parsable: bool
+
+
+@dataclass(frozen=True)
+class BatchSubmission:
+    job_id: str
+    user_parsable: bool
+    stderr: str
 
 
 def _now() -> str:
@@ -51,12 +134,51 @@ def _shell_single_quote(value: str) -> str:
     return "'" + value.replace("'", "'\"'\"'") + "'"
 
 
-def _find_script_index(argv: list[str]) -> int:
-    for index, value in enumerate(argv):
-        if value == "--wrap" or value.startswith("--wrap="):
-            raise SystemExit("aisbatch does not yet support sbatch --wrap")
-        if not value.startswith("-") and Path(value).exists():
-            return index
+def _parse_sbatch_invocation(argv: list[str]) -> ParsedSbatchInvocation:
+    passthrough: list[str] = []
+    user_parsable = False
+    index = 0
+    while index < len(argv):
+        value = argv[index]
+        if value == "--":
+            if index + 1 >= len(argv):
+                raise SystemExit("usage: aisbatch [sbatch-options] script [script-args]")
+            return ParsedSbatchInvocation(passthrough, argv[index + 2 :], Path(argv[index + 1]).resolve(), None, user_parsable)
+        if value == "--parsable":
+            user_parsable = True
+            index += 1
+            continue
+        if value == "--wrap":
+            if index + 1 >= len(argv):
+                raise SystemExit("aisbatch --wrap requires a command")
+            return ParsedSbatchInvocation(passthrough, [], None, argv[index + 1], user_parsable)
+        if value.startswith("--wrap="):
+            return ParsedSbatchInvocation(passthrough, [], None, value.split("=", 1)[1], user_parsable)
+        if value.startswith("--"):
+            passthrough.append(value)
+            name = value[2:].split("=", 1)[0]
+            if "=" not in value and name in SBATCH_LONG_OPTIONS_WITH_ARG:
+                if index + 1 >= len(argv):
+                    raise SystemExit(f"aisbatch {value} requires an argument")
+                passthrough.append(argv[index + 1])
+                index += 2
+                continue
+            index += 1
+            continue
+        if value.startswith("-") and value != "-":
+            passthrough.append(value)
+            if len(value) == 2 and value[1] in SBATCH_SHORT_OPTIONS_WITH_ARG:
+                if index + 1 >= len(argv):
+                    raise SystemExit(f"aisbatch {value} requires an argument")
+                passthrough.append(argv[index + 1])
+                index += 2
+                continue
+            index += 1
+            continue
+        script_path = Path(value).resolve()
+        if not script_path.exists() or not script_path.is_file():
+            raise SystemExit(f"aisbatch script does not exist or is not a file: {value}")
+        return ParsedSbatchInvocation(passthrough, argv[index + 1 :], script_path, None, user_parsable)
     raise SystemExit("usage: aisbatch [sbatch-options] script [script-args]")
 
 
@@ -87,19 +209,24 @@ trap _ai_slurm_record_finish EXIT
     return "\n".join([*lines[:insert_at], prelude, *lines[insert_at:]]) + "\n"
 
 
-def submit_batch(argv: list[str]) -> str:
-    script_index = _find_script_index(argv)
-    script = Path(argv[script_index]).resolve()
-    script_text = script.read_text()
+def _wrap_script_text(command: str) -> str:
+    return "#!/bin/bash\n" + command + "\n"
+
+
+def submit_batch_result(argv: list[str]) -> BatchSubmission:
+    parsed = _parse_sbatch_invocation(argv)
+    script = parsed.script_path
+    script_text = script.read_text() if script is not None else _wrap_script_text(parsed.wrap_command or "")
     submitted_at = _now()
     command = "aisbatch " + " ".join(argv)
 
     prepared_root = root_dir() / "pending"
     prepared_root.mkdir(parents=True, exist_ok=True)
-    prepared_script = prepared_root / f"{script.stem}.instrumented.slurm"
+    prepared_stem = script.stem if script is not None else "wrap"
+    prepared_script = prepared_root / f"{prepared_stem}.instrumented.slurm"
     prepared_script.write_text(_instrument_script(script_text, root_dir()))
 
-    result = run_slurm_command("sbatch", ["--parsable", *argv[:script_index], str(prepared_script), *argv[script_index + 1 :]])
+    result = run_slurm_command("sbatch", ["--parsable", *parsed.passthrough_args, str(prepared_script), *parsed.script_args])
     if result.returncode != 0:
         raise RuntimeError(result.stderr or result.stdout)
 
@@ -111,13 +238,17 @@ def submit_batch(argv: list[str]) -> str:
     job_dir.mkdir(parents=True, exist_ok=True)
     copied_original = job_dir / "original.slurm"
     copied_instrumented = job_dir / "instrumented.slurm"
-    shutil.copyfile(script, copied_original)
+    if script is not None:
+        shutil.copyfile(script, copied_original)
+    else:
+        copied_original.write_text(script_text)
     shutil.copyfile(prepared_script, copied_instrumented)
     git_meta = collect_git_metadata(Path.cwd())
     (job_dir / "git_status.txt").write_text(git_meta.status)
     (job_dir / "git.diff").write_text(git_meta.diff)
-    stdout_path = _resolve_sbatch_path(_parse_sbatch_path(script_text, "output"), script.parent, job_id)
-    stderr_path = _resolve_sbatch_path(_parse_sbatch_path(script_text, "error"), script.parent, job_id)
+    script_dir = script.parent if script is not None else Path.cwd()
+    stdout_path = _resolve_sbatch_path(_parse_sbatch_path(script_text, "output"), script_dir, job_id)
+    stderr_path = _resolve_sbatch_path(_parse_sbatch_path(script_text, "error"), script_dir, job_id)
 
     with connect() as conn:
         init_db(conn)
@@ -134,7 +265,7 @@ def submit_batch(argv: list[str]) -> str:
                 submitted_at,
                 os.getcwd(),
                 command,
-                str(script),
+                str(script) if script is not None else None,
                 str(copied_instrumented),
                 _parse_job_name(script_text),
                 stdout_path,
@@ -155,11 +286,21 @@ def submit_batch(argv: list[str]) -> str:
         )
         conn.commit()
 
-    return job_id
+    return BatchSubmission(job_id=job_id, user_parsable=parsed.user_parsable, stderr=result.stderr)
+
+
+def submit_batch(argv: list[str]) -> str:
+    return submit_batch_result(argv).job_id
 
 
 def main() -> None:
-    print(submit_batch(os.sys.argv[1:]))
+    result = submit_batch_result(os.sys.argv[1:])
+    if result.stderr:
+        print(result.stderr, end="", file=sys.stderr)
+    if result.user_parsable:
+        print(result.job_id)
+    else:
+        print(f"Submitted batch job {result.job_id}")
 
 
 if __name__ == "__main__":

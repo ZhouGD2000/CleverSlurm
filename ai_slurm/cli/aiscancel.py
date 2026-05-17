@@ -1,5 +1,5 @@
-import argparse
 import os
+import re
 from datetime import datetime, timezone
 
 from ai_slurm.db import connect, init_db
@@ -10,16 +10,45 @@ def _now() -> str:
     return datetime.now(timezone.utc).isoformat()
 
 
-def cancel_job(argv: list[str]) -> None:
-    parser = argparse.ArgumentParser(prog="aiscancel")
-    parser.add_argument("job_id")
-    parser.add_argument("--note")
-    args = parser.parse_args(argv)
+def _extract_note(argv: list[str]) -> tuple[list[str], str | None]:
+    passthrough = []
+    note = None
+    index = 0
+    while index < len(argv):
+        value = argv[index]
+        if value == "--note":
+            if index + 1 >= len(argv):
+                raise SystemExit("aiscancel --note requires an argument")
+            note = argv[index + 1]
+            index += 2
+            continue
+        if value.startswith("--note="):
+            note = value.split("=", 1)[1]
+            index += 1
+            continue
+        passthrough.append(value)
+        index += 1
+    return passthrough, note
 
-    result = run_slurm_command("scancel", [args.job_id])
+
+def _infer_job_id(argv: list[str]) -> str | None:
+    for value in argv:
+        if re.match(r"^\d+(?:[_\.][\w-]+)?$", value):
+            return value
+    return None
+
+
+def cancel_job(argv: list[str]):
+    passthrough, note = _extract_note(argv)
+    if not passthrough:
+        raise SystemExit("usage: aiscancel [scancel-options] job_id [--note NOTE]")
+
+    result = run_slurm_command("scancel", passthrough)
     if result.returncode != 0:
         raise RuntimeError(result.stderr or result.stdout)
 
+    job_id = _infer_job_id(passthrough)
+    command = "scancel " + " ".join(passthrough)
     with connect() as conn:
         init_db(conn)
         conn.execute(
@@ -28,20 +57,26 @@ def cancel_job(argv: list[str]) -> None:
             values (?, ?, ?, ?, ?, ?, ?)
             """,
             (
-                args.job_id,
+                job_id,
                 _now(),
                 "CANCEL_REQUESTED",
-                f"scancel {args.job_id}",
+                command,
                 os.getcwd(),
-                args.note,
-                result.stdout,
+                note,
+                result.stdout + result.stderr,
             ),
         )
         conn.commit()
+    return result
 
 
 def main() -> None:
-    cancel_job(os.sys.argv[1:])
+    result = cancel_job(os.sys.argv[1:])
+    if result.stdout:
+        print(result.stdout, end="")
+    if result.stderr:
+        print(result.stderr, end="", file=os.sys.stderr)
+    raise SystemExit(result.returncode)
 
 
 if __name__ == "__main__":

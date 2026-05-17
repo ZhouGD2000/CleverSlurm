@@ -14,7 +14,7 @@ def _local_job_id() -> str:
     return "local-" + datetime.now(timezone.utc).strftime("%Y%m%d%H%M%S%f")
 
 
-def run_job(argv: list[str]) -> subprocess.CompletedProcess[str]:
+def run_job(argv: list[str], *, capture_output: bool = True) -> subprocess.CompletedProcess[str]:
     if not argv:
         raise SystemExit("usage: aisrun [srun-args...] command [args...]")
 
@@ -23,13 +23,16 @@ def run_job(argv: list[str]) -> subprocess.CompletedProcess[str]:
     cwd = os.getcwd()
     ai_command = "aisrun " + " ".join(argv)
     srun_command = "srun " + " ".join(argv)
-    result = subprocess.run(
-        [command_path("srun"), *argv],
-        check=False,
-        text=True,
-        stdout=subprocess.PIPE,
-        stderr=subprocess.PIPE,
-    )
+    if capture_output:
+        result = subprocess.run(
+            [command_path("srun"), *argv],
+            check=False,
+            text=True,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE,
+        )
+    else:
+        result = subprocess.run([command_path("srun"), *argv], check=False, text=True)
     state = "COMPLETED" if result.returncode == 0 else "FAILED"
 
     with connect() as conn:
@@ -47,7 +50,7 @@ def run_job(argv: list[str]) -> subprocess.CompletedProcess[str]:
             insert into job_events (job_id, event_time, event_type, command, cwd, raw_output)
             values (?, ?, ?, ?, ?, ?)
             """,
-            (job_id, timestamp, state, srun_command, cwd, result.stdout + result.stderr),
+            (job_id, timestamp, state, srun_command, cwd, (result.stdout or "") + (result.stderr or "")),
         )
         conn.commit()
 
@@ -55,11 +58,7 @@ def run_job(argv: list[str]) -> subprocess.CompletedProcess[str]:
 
 
 def main() -> None:
-    result = run_job(os.sys.argv[1:])
-    if result.stdout:
-        print(result.stdout, end="")
-    if result.stderr:
-        print(result.stderr, end="", file=os.sys.stderr)
+    result = run_job(os.sys.argv[1:], capture_output=False)
     raise SystemExit(result.returncode)
 
 

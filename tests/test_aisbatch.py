@@ -81,6 +81,45 @@ def test_aisbatch_passes_sbatch_options_and_script_args_to_real_sbatch(isolated_
     assert called_args[5:] == ["arg1", "arg2"]
 
 
+def test_aisbatch_does_not_treat_chdir_argument_as_script(isolated_home, fake_bin, tmp_path):
+    calls = tmp_path / "sbatch.calls"
+    chdir = tmp_path / "work"
+    chdir.mkdir()
+    write_executable(
+        fake_bin / "sbatch",
+        f"#!/bin/sh\nprintf '%s\\n' \"$@\" > {calls}\nprintf '123456\\n'\n",
+    )
+    script = tmp_path / "job.slurm"
+    script.write_text("#!/bin/bash\nhostname\n")
+
+    from ai_slurm.cli.aisbatch import submit_batch
+
+    submit_batch(["--chdir", str(chdir), str(script)])
+
+    called_args = calls.read_text().splitlines()
+    assert called_args[:3] == ["--parsable", "--chdir", str(chdir)]
+    assert called_args[3].endswith("job.instrumented.slurm")
+
+
+def test_aisbatch_wrap_is_translated_to_instrumented_script(isolated_home, fake_bin, tmp_path):
+    calls = tmp_path / "sbatch.calls"
+    write_executable(
+        fake_bin / "sbatch",
+        f"#!/bin/sh\nprintf '%s\\n' \"$@\" > {calls}\nprintf '123456\\n'\n",
+    )
+
+    from ai_slurm.cli.aisbatch import submit_batch
+
+    submit_batch(["-p", "CPU2", "--wrap", "echo wrapped"])
+
+    called_args = calls.read_text().splitlines()
+    assert called_args[:3] == ["--parsable", "-p", "CPU2"]
+    assert "--wrap" not in called_args
+    instrumented = (isolated_home / "jobs" / "123456" / "instrumented.slurm").read_text()
+    assert "echo wrapped" in instrumented
+    assert "PROGRAM_FINISHED" in instrumented
+
+
 def test_aisbatch_instrumented_script_records_program_finish(isolated_home, fake_bin, tmp_path):
     write_executable(fake_bin / "sbatch", "#!/bin/sh\nprintf '123456\\n'\n")
     script = tmp_path / "job.slurm"
@@ -103,6 +142,22 @@ def test_aisbatch_module_entrypoint_runs_main(isolated_home, fake_bin, tmp_path)
 
     result = subprocess.run(
         [sys.executable, "-m", "ai_slurm.cli.aisbatch", str(script)],
+        text=True,
+        stdout=subprocess.PIPE,
+        stderr=subprocess.PIPE,
+        check=True,
+    )
+
+    assert result.stdout == "Submitted batch job 123456\n"
+
+
+def test_aisbatch_module_entrypoint_preserves_parsable_output(isolated_home, fake_bin, tmp_path):
+    write_executable(fake_bin / "sbatch", "#!/bin/sh\nprintf '123456\\n'\n")
+    script = tmp_path / "job.slurm"
+    script.write_text("#!/bin/bash\nhostname\n")
+
+    result = subprocess.run(
+        [sys.executable, "-m", "ai_slurm.cli.aisbatch", "--parsable", str(script)],
         text=True,
         stdout=subprocess.PIPE,
         stderr=subprocess.PIPE,

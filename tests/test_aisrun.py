@@ -1,4 +1,6 @@
 import sqlite3
+import subprocess
+import sys
 
 from conftest import write_executable
 
@@ -31,3 +33,21 @@ def test_aisrun_records_standalone_fake_srun_execution(isolated_home, fake_bin, 
     assert event[0] == "COMPLETED"
     assert event[1] == "srun python script.py"
     assert event[2].startswith("ran python script.py\n")
+
+
+def test_aisrun_module_entrypoint_forwards_output_and_exit_code(isolated_home, fake_bin):
+    write_executable(
+        fake_bin / "srun",
+        "#!/bin/sh\nprintf 'out\\n'\nprintf 'err\\n' >&2\nexit 7\n",
+    )
+    result = subprocess.run(
+        [sys.executable, "-m", "ai_slurm.cli.aisrun", "python", "script.py"],
+        text=True,
+        stdout=subprocess.PIPE,
+        stderr=subprocess.PIPE,
+        check=False,
+    )
+
+    assert result.returncode == 7
+    assert result.stdout == "out\n"
+    assert result.stderr == "err\n"

@@ -6,9 +6,9 @@ The design rule is simple: deterministic code records facts; AI only summarizes 
 
 ## Current Features
 
-- `aisbatch`: wraps `sbatch --parsable`, passes through normal sbatch options, copies the original Slurm script, writes an instrumented script, records job metadata, git status/diff, stdout/stderr paths, submission events, and a program-finished runtime marker.
-- `aisrun`: wraps direct `srun` execution and records a standalone local job record when outside an existing allocation.
-- `aiscancel`: wraps `scancel` for one job and records a cancellation request event with an optional note.
+- `aisbatch`: wraps `sbatch --parsable`, passes through normal sbatch options, supports script submissions and basic `--wrap`, copies the original or generated script, writes an instrumented script, records job metadata, git status/diff, stdout/stderr paths, submission events, and a program-finished runtime marker.
+- `aisrun`: wraps direct `srun` execution, passes stdout/stderr through in CLI mode, and records a standalone local job record when outside an existing allocation.
+- `aiscancel`: wraps `scancel`, passes through scancel options, and records a cancellation request event with an optional CleverSlurm-only `--note`.
 - `aitrack`: polls `sacct` for known jobs and updates state, exit code, elapsed time, memory, and node list.
 - `aijobs`: queries recent jobs, job details, events, files, runtime commands, log tails, and AI answers over recent job facts.
 - `aisummarize`: sends curated job facts to SiliconFlow and stores structured AI summaries.
@@ -65,6 +65,7 @@ Submit a batch script:
 ```bash
 aisbatch job.slurm
 aisbatch -p CPU2 --time=00:01:00 job.slurm arg1 arg2
+aisbatch -p CPU2 --wrap "hostname && python3 script.py"
 ```
 
 Track known jobs:
@@ -115,15 +116,17 @@ aijobs ask "最近失败的任务有哪些，原因是什么？" -n 20
 
 ## Support Boundaries
 
-`aisbatch` preserves leading `#SBATCH` directives and passes most normal sbatch command-line options to real `sbatch`. It does not yet support `sbatch --wrap`, and its script detection assumes the submitted script is an existing file path in the argument list.
+`aisbatch` preserves leading `#SBATCH` directives and passes most normal sbatch command-line options to real `sbatch`. Basic `--wrap` is translated to an instrumented temporary script. Some unusual sbatch forms may still need explicit testing before replacing `sbatch` cluster-wide.
 
-`aisrun` passes arguments to real `srun`, so non-interactive executions work. It currently captures stdout/stderr, so it is not a complete replacement for interactive commands such as `srun --pty bash`.
+`aisrun` passes arguments to real `srun`. In CLI mode it lets the child process inherit stdout/stderr, so it behaves more like `srun` for normal terminal use. Interactive PTY-heavy workflows such as `srun --pty bash` should still be smoke-tested on the target cluster before relying on a rename.
+
+`aiscancel` passes arguments to real `scancel` after removing CleverSlurm's optional `--note`. If you rename it to `scancel`, broad scancel commands keep their normal Slurm meaning; use the same caution you would use with real `scancel`.
 
 For batch jobs, CleverSlurm records submission immediately. The instrumented script also writes a runtime `PROGRAM_FINISHED` marker when the batch script exits. Run `aitrack` to ingest runtime markers and Slurm accounting state into SQLite.
 
 ## Safety Notes
 
-- `aiscancel` only cancels the job id you pass. There is no batch-cancel command in this repository.
+- `aiscancel` passes through to Slurm `scancel`; there is no extra CleverSlurm batch-cancel helper, but broad real `scancel` options still do what Slurm normally does.
 - Tests use fake Slurm commands and do not cancel real Slurm jobs.
 - For real-cluster smoke tests, use a fresh `AI_SLURM_ROOT` so experiments do not modify an existing tracking database.
 - Do not delete remote test directories automatically unless the owner explicitly asks.

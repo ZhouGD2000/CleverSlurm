@@ -17,11 +17,14 @@ The tests cover:
 - original and instrumented script snapshots
 - preservation of leading `#SBATCH` directives
 - sbatch command-line option passthrough
+- basic `sbatch --wrap` translation
 - batch program-finished marker ingestion
 - stdout/stderr path parsing
 - git commit/status/diff capture
 - fake `srun` execution through `aisrun`
+- `aisrun` CLI stdout/stderr and exit-code forwarding
 - fake `scancel` event recording
+- scancel option passthrough with CleverSlurm-only `--note`
 - fake `sacct` tracker updates, including no-header `sacct -n` output
 - runtime `commands.log` ingestion
 - `aijobs` details, events, files, commands, and logs
