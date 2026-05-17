@@ -76,3 +76,40 @@ def ingest_runtime_commands(conn, job_id: str) -> int:
         inserted += 1
     conn.commit()
     return inserted
+
+
+def _finish_exists(conn, job_id: str, line: str) -> bool:
+    return (
+        conn.execute(
+            """
+            select 1 from job_events
+            where job_id = ? and event_type = 'PROGRAM_FINISHED' and raw_output = ?
+            limit 1
+            """,
+            (job_id, line),
+        ).fetchone()
+        is not None
+    )
+
+
+def ingest_runtime_finish(conn, job_id: str) -> int:
+    log_path = root_dir() / "jobs" / job_id / "runtime" / "finish.log"
+    if not log_path.exists():
+        return 0
+
+    inserted = 0
+    for line in log_path.read_text().splitlines():
+        if not line.strip() or _finish_exists(conn, job_id, line):
+            continue
+        record = json.loads(line)
+        event_job_id = str(record.get("job_id") or job_id)
+        conn.execute(
+            """
+            insert into job_events (job_id, event_time, event_type, raw_output)
+            values (?, ?, ?, ?)
+            """,
+            (event_job_id, record.get("time") or _now(), "PROGRAM_FINISHED", line),
+        )
+        inserted += 1
+    conn.commit()
+    return inserted

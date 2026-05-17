@@ -1,4 +1,3 @@
-import argparse
 import os
 import shutil
 from datetime import datetime, timezone
@@ -48,13 +47,36 @@ def _resolve_sbatch_path(path_text: str | None, script_dir: Path, job_id: str) -
     return str(path.resolve())
 
 
-def _instrument_script(original: str) -> str:
-    prelude = """\
-export AI_SLURM_JOB_ID="${SLURM_JOB_ID:-unknown}"
-export AI_SLURM_SUBMIT_DIR="${SLURM_SUBMIT_DIR:-$(pwd)}"
-export AI_SLURM_LOG_DIR="$HOME/.ai-slurm/jobs/${SLURM_JOB_ID}/runtime"
-export PATH="$HOME/.ai-slurm/wrappers:$PATH"
+def _shell_single_quote(value: str) -> str:
+    return "'" + value.replace("'", "'\"'\"'") + "'"
+
+
+def _find_script_index(argv: list[str]) -> int:
+    for index, value in enumerate(argv):
+        if value == "--wrap" or value.startswith("--wrap="):
+            raise SystemExit("aisbatch does not yet support sbatch --wrap")
+        if not value.startswith("-") and Path(value).exists():
+            return index
+    raise SystemExit("usage: aisbatch [sbatch-options] script [script-args]")
+
+
+def _instrument_script(original: str, ai_root: Path) -> str:
+    root = str(ai_root.resolve())
+    prelude = f"""\
+export AI_SLURM_ROOT={_shell_single_quote(root)}
+export AI_SLURM_JOB_ID="${{SLURM_JOB_ID:-unknown}}"
+export AI_SLURM_SUBMIT_DIR="${{SLURM_SUBMIT_DIR:-$(pwd)}}"
+export AI_SLURM_LOG_DIR="$AI_SLURM_ROOT/jobs/$AI_SLURM_JOB_ID/runtime"
+export PATH="$AI_SLURM_ROOT/wrappers:$PATH"
 mkdir -p "$AI_SLURM_LOG_DIR"
+_ai_slurm_record_finish() {{
+  _ai_slurm_exit_code=$?
+  _ai_slurm_time=$(date -u +"%Y-%m-%dT%H:%M:%SZ")
+  _ai_slurm_host=$(hostname 2>/dev/null || printf unknown)
+  mkdir -p "$AI_SLURM_LOG_DIR"
+  printf '{{"time":"%s","job_id":"%s","hostname":"%s","exit_code":%s,"event_type":"PROGRAM_FINISHED"}}\\n' "$_ai_slurm_time" "$AI_SLURM_JOB_ID" "$_ai_slurm_host" "$_ai_slurm_exit_code" >> "$AI_SLURM_LOG_DIR/finish.log"
+}}
+trap _ai_slurm_record_finish EXIT
 """
     lines = original.splitlines()
     insert_at = 0
@@ -66,11 +88,8 @@ mkdir -p "$AI_SLURM_LOG_DIR"
 
 
 def submit_batch(argv: list[str]) -> str:
-    parser = argparse.ArgumentParser(prog="aisbatch")
-    parser.add_argument("script")
-    args = parser.parse_args(argv)
-
-    script = Path(args.script).resolve()
+    script_index = _find_script_index(argv)
+    script = Path(argv[script_index]).resolve()
     script_text = script.read_text()
     submitted_at = _now()
     command = "aisbatch " + " ".join(argv)
@@ -78,9 +97,9 @@ def submit_batch(argv: list[str]) -> str:
     prepared_root = root_dir() / "pending"
     prepared_root.mkdir(parents=True, exist_ok=True)
     prepared_script = prepared_root / f"{script.stem}.instrumented.slurm"
-    prepared_script.write_text(_instrument_script(script_text))
+    prepared_script.write_text(_instrument_script(script_text, root_dir()))
 
-    result = run_slurm_command("sbatch", ["--parsable", str(prepared_script)])
+    result = run_slurm_command("sbatch", ["--parsable", *argv[:script_index], str(prepared_script), *argv[script_index + 1 :]])
     if result.returncode != 0:
         raise RuntimeError(result.stderr or result.stdout)
 

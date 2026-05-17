@@ -6,7 +6,7 @@ The design rule is simple: deterministic code records facts; AI only summarizes 
 
 ## Current Features
 
-- `aisbatch`: wraps `sbatch --parsable`, copies the original Slurm script, writes an instrumented script, records job metadata, git status/diff, stdout/stderr paths, and submission events.
+- `aisbatch`: wraps `sbatch --parsable`, passes through normal sbatch options, copies the original Slurm script, writes an instrumented script, records job metadata, git status/diff, stdout/stderr paths, submission events, and a program-finished runtime marker.
 - `aisrun`: wraps direct `srun` execution and records a standalone local job record when outside an existing allocation.
 - `aiscancel`: wraps `scancel` for one job and records a cancellation request event with an optional note.
 - `aitrack`: polls `sacct` for known jobs and updates state, exit code, elapsed time, memory, and node list.
@@ -64,6 +64,7 @@ Submit a batch script:
 
 ```bash
 aisbatch job.slurm
+aisbatch -p CPU2 --time=00:01:00 job.slurm arg1 arg2
 ```
 
 Track known jobs:
@@ -111,6 +112,14 @@ aijobs ask "最近失败的任务有哪些，原因是什么？" -n 20
 ```
 
 `aijobs ask` sends only recorded database facts to the model. It does not ask AI to infer Slurm job ids, states, exit codes, paths, or commands from memory.
+
+## Support Boundaries
+
+`aisbatch` preserves leading `#SBATCH` directives and passes most normal sbatch command-line options to real `sbatch`. It does not yet support `sbatch --wrap`, and its script detection assumes the submitted script is an existing file path in the argument list.
+
+`aisrun` passes arguments to real `srun`, so non-interactive executions work. It currently captures stdout/stderr, so it is not a complete replacement for interactive commands such as `srun --pty bash`.
+
+For batch jobs, CleverSlurm records submission immediately. The instrumented script also writes a runtime `PROGRAM_FINISHED` marker when the batch script exits. Run `aitrack` to ingest runtime markers and Slurm accounting state into SQLite.
 
 ## Safety Notes
 

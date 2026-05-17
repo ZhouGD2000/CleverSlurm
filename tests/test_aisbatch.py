@@ -62,6 +62,40 @@ def test_aisbatch_records_stdout_and_stderr_paths_with_job_id(isolated_home, fak
     assert row == (str(tmp_path / "logs" / "smoke-123456.out"), str(tmp_path / "logs" / "smoke-123456.err"))
 
 
+def test_aisbatch_passes_sbatch_options_and_script_args_to_real_sbatch(isolated_home, fake_bin, tmp_path):
+    calls = tmp_path / "sbatch.calls"
+    write_executable(
+        fake_bin / "sbatch",
+        f"#!/bin/sh\nprintf '%s\\n' \"$@\" > {calls}\nprintf '123456\\n'\n",
+    )
+    script = tmp_path / "job.slurm"
+    script.write_text("#!/bin/bash\nhostname\n")
+
+    from ai_slurm.cli.aisbatch import submit_batch
+
+    submit_batch(["-p", "CPU2", "--time=00:01:00", str(script), "arg1", "arg2"])
+
+    called_args = calls.read_text().splitlines()
+    assert called_args[:4] == ["--parsable", "-p", "CPU2", "--time=00:01:00"]
+    assert called_args[4].endswith("job.instrumented.slurm")
+    assert called_args[5:] == ["arg1", "arg2"]
+
+
+def test_aisbatch_instrumented_script_records_program_finish(isolated_home, fake_bin, tmp_path):
+    write_executable(fake_bin / "sbatch", "#!/bin/sh\nprintf '123456\\n'\n")
+    script = tmp_path / "job.slurm"
+    script.write_text("#!/bin/bash\n#SBATCH --job-name=test-job\npython run.py\n")
+
+    from ai_slurm.cli.aisbatch import submit_batch
+
+    submit_batch([str(script)])
+
+    instrumented = (isolated_home / "jobs" / "123456" / "instrumented.slurm").read_text()
+    assert "AI_SLURM_ROOT=" in instrumented
+    assert "finish.log" in instrumented
+    assert "PROGRAM_FINISHED" in instrumented
+
+
 def test_aisbatch_module_entrypoint_runs_main(isolated_home, fake_bin, tmp_path):
     write_executable(fake_bin / "sbatch", "#!/bin/sh\nprintf '123456\\n'\n")
     script = tmp_path / "job.slurm"

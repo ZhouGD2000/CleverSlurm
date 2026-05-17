@@ -16,6 +16,8 @@ The tests cover:
 - `aisbatch` job id parsing from `sbatch --parsable`
 - original and instrumented script snapshots
 - preservation of leading `#SBATCH` directives
+- sbatch command-line option passthrough
+- batch program-finished marker ingestion
 - stdout/stderr path parsing
 - git commit/status/diff capture
 - fake `srun` execution through `aisrun`
