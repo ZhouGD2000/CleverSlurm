@@ -33,7 +33,7 @@ The tests cover:
 - content-addressed file storage
 - large-file metadata policy
 - SiliconFlow request construction and error handling
-- notification classification, queue deduplication, and Feishu webhook dispatch with fake HTTP
+- notification classification, queue deduplication, and Feishu immediate/grouped webhook dispatch with fake HTTP
 
 ## Real Slurm Smoke Test
 

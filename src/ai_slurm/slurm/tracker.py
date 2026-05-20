@@ -61,8 +61,12 @@ def _parse_sacct_table(output: str) -> dict[str, dict[str, str]]:
     return rows
 
 
+def _dispatch_due_notifications() -> None:
+    if notification_auto_dispatch_enabled():
+        dispatch_pending(mode="all")
+
+
 def track_once() -> None:
-    should_dispatch = False
     with connect() as conn:
         init_db(conn)
         jobs = conn.execute(
@@ -76,6 +80,7 @@ def track_once() -> None:
             """
         ).fetchall()
         if not jobs:
+            _dispatch_due_notifications()
             return
 
         job_ids = [job["job_id"] for job in jobs]
@@ -130,7 +135,6 @@ def track_once() -> None:
                 if _normalize_state(new_state) in TERMINAL_STATES:
                     try:
                         process_job_completion(conn, job["job_id"], event_id=int(cursor.lastrowid))
-                        should_dispatch = True
                     except Exception as exc:
                         conn.execute(
                             """
@@ -145,5 +149,4 @@ def track_once() -> None:
                             ),
                         )
         conn.commit()
-    if should_dispatch and notification_auto_dispatch_enabled():
-        dispatch_pending()
+    _dispatch_due_notifications()

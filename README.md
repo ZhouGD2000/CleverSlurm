@@ -137,14 +137,17 @@ aijobs ask "最近失败的任务有哪些，原因是什么？" -n 20
 
 `aijobs ask` sends only recorded database facts to the model. It does not ask AI to infer Slurm job ids, states, exit codes, paths, or commands from memory.
 
-Dispatch pending immediate Feishu notifications manually:
+Dispatch pending Feishu notifications manually:
 
 ```bash
 ainotify pending
 ainotify dispatch
+ainotify dispatch --mode batch --force
+ainotify dispatch --mode digest --force
+ainotify dispatch --mode all
 ```
 
-`aitrack` normally dispatches immediate notifications automatically after it records a terminal state. Normal completions and low-severity cancellations are recorded in the notification table but are not pushed immediately.
+`aitrack` normally dispatches immediate notifications automatically after it records a terminal state. It also flushes due batch/digest summaries according to `batch_window_minutes`; `--force` is only needed when you want to send a summary before the window expires.
 
 ## Support Boundaries
 
@@ -172,6 +175,6 @@ python3 -m pytest -q
 python3 -m compileall -q src/ai_slurm
 ```
 
-The current suite covers fake `sbatch`, fake `srun`, fake `sacct`, fake `scancel`, SQLite writes, runtime command ingestion, Julia include parsing, snapshots, AI request construction, AI question answering over job facts, notification analysis, Feishu dispatch with fake HTTP, and query CLI helpers.
+The current suite covers fake `sbatch`, fake `srun`, fake `sacct`, fake `scancel`, SQLite writes, runtime command ingestion, Julia include parsing, snapshots, AI request construction, AI question answering over job facts, notification analysis, Feishu immediate and grouped dispatch with fake HTTP, and query CLI helpers.
 
 See [docs/testing.md](docs/testing.md), [docs/configuration.md](docs/configuration.md), and [docs/notifications.md](docs/notifications.md).

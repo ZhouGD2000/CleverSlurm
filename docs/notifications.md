@@ -8,7 +8,7 @@ CleverSlurm records every terminal job transition before deciding whether to pus
 - optional AI semantic log analysis over compact log packets
 - notification queue rows with dedupe keys
 - immediate Feishu card dispatch for hard failures
-- recorded batch/digest rows for normal completions and user cancellations
+- grouped batch/digest Feishu cards for normal completions and user cancellations
 
 ## Flow
 
@@ -21,6 +21,7 @@ aitrack
   -> insert job_analysis
   -> insert notifications
   -> dispatch immediate Feishu notifications
+  -> flush due batch/digest summaries
 ```
 
 Hard failure states are `FAILED`, `OUT_OF_MEMORY`, `TIMEOUT`, `NODE_FAIL`, `BOOT_FAIL`, `DEADLINE`, `REVOKED`, and `SPECIAL_EXIT`. Nonzero `ExitCode` or `DerivedExitCode` is also treated as a hard failure.
@@ -78,14 +79,19 @@ aijobs notifications
 aijobs notifications 46644
 ```
 
-Manually dispatch pending immediate notifications:
+Manually dispatch pending notifications:
 
 ```bash
 ainotify pending
 ainotify dispatch
+ainotify dispatch --mode batch --force
+ainotify dispatch --mode digest --force
+ainotify dispatch --mode all
 ```
 
-`aitrack` dispatches automatically by default. Set `AI_SLURM_NOTIFICATION_AUTO_DISPATCH=false` to record rows without sending from the tracker.
+`aitrack` dispatches automatically by default. Immediate notifications are sent as individual cards. `batch` and `digest` notifications are grouped by `group_id` when available, otherwise by category, and sent as summary cards once the configured window has elapsed. Set `AI_SLURM_NOTIFICATION_AUTO_DISPATCH=false` to record rows without sending from the tracker.
+
+`ainotify dispatch --mode batch --force` is useful for testing because it sends the grouped summary without waiting for `batch_window_minutes`.
 
 Enable AI semantic log analysis for completion notifications:
 
@@ -97,4 +103,4 @@ The AI receives compact stdout/stderr head/tail snippets, matched evidence windo
 
 ## Current Limits
 
-Batch and digest rows are recorded but not yet sent as grouped summary cards. Large scan grouping and daily digest delivery are still future work.
+Large scan grouping currently uses `group_id` when it is present and otherwise falls back to category. Daily digest scheduling is not built in; run `ainotify dispatch --mode digest` from cron or another scheduler if you want a fixed wall-clock digest.

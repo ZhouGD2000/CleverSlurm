@@ -31,12 +31,14 @@ def main() -> None:
     pending.add_argument("-n", "--limit", type=int, default=50)
     dispatch = subparsers.add_parser("dispatch")
     dispatch.add_argument("-n", "--limit", type=int, default=50)
+    dispatch.add_argument("--mode", choices=["immediate", "batch", "digest", "all"], default="immediate")
+    dispatch.add_argument("--force", action="store_true", help="send batch/digest summaries without waiting for the window")
     args = parser.parse_args()
 
     if args.command == "pending":
         print(_format_pending(args.limit))
     elif args.command == "dispatch":
-        sent = dispatch_pending(limit=args.limit)
+        sent = dispatch_pending(limit=args.limit, mode=args.mode, force=args.force)
         print(f"sent {sent} notification(s)")
 
 

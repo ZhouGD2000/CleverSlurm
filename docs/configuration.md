@@ -118,7 +118,7 @@ message_format = "card"
 batch_window_minutes = "30"
 ```
 
-`aitrack` records a `job_analysis` row and a `notifications` row when a job reaches a terminal Slurm state. Hard failures, nonzero `ExitCode`, and nonzero `DerivedExitCode` are immediate notifications. Normal completions and user cancellations are recorded for batch or digest handling.
+`aitrack` records a `job_analysis` row and a `notifications` row when a job reaches a terminal Slurm state. Hard failures, nonzero `ExitCode`, and nonzero `DerivedExitCode` are immediate notifications. Normal completions and user cancellations are grouped into batch or digest summary cards after `batch_window_minutes`.
 
 AI semantic log analysis is opt-in:
 
@@ -135,6 +135,9 @@ aijobs notifications
 aijobs notifications 46644
 ainotify pending
 ainotify dispatch
+ainotify dispatch --mode batch --force
+ainotify dispatch --mode digest --force
+ainotify dispatch --mode all
 ```
 
 ## Recommended Permissions
