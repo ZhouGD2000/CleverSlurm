@@ -94,6 +94,49 @@ or:
 auto_summary = "false"
 ```
 
+## Feishu Notifications
+
+Feishu notifications use a Feishu/Lark custom bot webhook. Keep the webhook and signing secret in environment variables:
+
+```bash
+export AI_SLURM_FEISHU_WEBHOOK="https://open.feishu.cn/open-apis/bot/v2/hook/..."
+export AI_SLURM_FEISHU_SECRET="..."
+```
+
+Optional config:
+
+```toml
+[notification]
+enabled = "true"
+auto_dispatch = "true"
+ai_analysis = "false"
+
+[notification.feishu]
+webhook_url_env = "AI_SLURM_FEISHU_WEBHOOK"
+secret_env = "AI_SLURM_FEISHU_SECRET"
+message_format = "card"
+batch_window_minutes = "30"
+```
+
+`aitrack` records a `job_analysis` row and a `notifications` row when a job reaches a terminal Slurm state. Hard failures, nonzero `ExitCode`, and nonzero `DerivedExitCode` are immediate notifications. Normal completions and user cancellations are recorded for batch or digest handling.
+
+AI semantic log analysis is opt-in:
+
+```bash
+export AI_SLURM_NOTIFICATION_AI_ANALYSIS=true
+```
+
+When enabled, the AI receives compact log snippets and deterministic facts. Its output may refine semantic status for completed jobs, but it cannot override factual Slurm state or hard-failure classification.
+
+Useful commands:
+
+```bash
+aijobs notifications
+aijobs notifications 46644
+ainotify pending
+ainotify dispatch
+```
+
 ## Recommended Permissions
 
 The config may contain an API key, so keep it private:

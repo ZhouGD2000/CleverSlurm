@@ -8,7 +8,7 @@ Run:
 
 ```bash
 python3 -m pytest -q
-python3 -m compileall -q ai_slurm
+python3 -m compileall -q src/ai_slurm
 ```
 
 The tests cover:
@@ -33,6 +33,7 @@ The tests cover:
 - content-addressed file storage
 - large-file metadata policy
 - SiliconFlow request construction and error handling
+- notification classification, queue deduplication, and Feishu webhook dispatch with fake HTTP
 
 ## Real Slurm Smoke Test
 

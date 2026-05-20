@@ -15,6 +15,7 @@ aisrun = "ai_slurm.cli.aisrun:main"
 aijobs = "ai_slurm.cli.aijobs:main"
 aitrack = "ai_slurm.cli.aitrack:main"
 aisummarize = "ai_slurm.cli.aisummarize:main"
+ainotify = "ai_slurm.cli.ainotify:main"
 
 [tool.setuptools.packages.find]
 where = ["src"]

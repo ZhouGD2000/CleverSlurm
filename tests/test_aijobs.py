@@ -2,7 +2,7 @@ import subprocess
 import sys
 
 from ai_slurm.db import connect, init_db
-from ai_slurm.cli.aijobs import list_commands, list_events, list_files, show_job, show_logs
+from ai_slurm.cli.aijobs import list_commands, list_events, list_files, list_notifications, show_job, show_logs
 
 
 def test_aijobs_show_returns_job_metadata(isolated_home):
@@ -63,6 +63,21 @@ def test_aijobs_events_files_and_commands_return_tables(isolated_home):
     assert "entry_file" in list_files("123456")
     assert "julia" in list_commands("123456")
     assert "/bin/julia" in list_commands("123456")
+
+
+def test_aijobs_notifications_returns_notification_rows(isolated_home):
+    with connect() as conn:
+        init_db(conn)
+        conn.execute(
+            "insert into notifications (job_id, mode, status, severity, category, title) "
+            "values ('123456', 'immediate', 'sent', 'high', 'FAILED', '[AI-Slurm][FAILED] Job 123456')"
+        )
+
+    text = list_notifications("123456")
+
+    assert "123456" in text
+    assert "immediate" in text
+    assert "FAILED" in text
 
 
 def test_aijobs_logs_tails_recorded_stdout_and_stderr(isolated_home, tmp_path):

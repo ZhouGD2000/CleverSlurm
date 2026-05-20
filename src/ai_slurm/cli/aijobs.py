@@ -94,6 +94,48 @@ def list_commands(job_id: str, limit: int = 100) -> str:
     )
 
 
+def list_notifications(job_id: str | None = None, limit: int = 50) -> str:
+    with connect() as conn:
+        init_db(conn)
+        if job_id:
+            rows = conn.execute(
+                """
+                select id, created_at, job_id, mode, status, severity, category, title, last_error
+                from notifications
+                where job_id = ?
+                order by id desc
+                limit ?
+                """,
+                (job_id, limit),
+            ).fetchall()
+        else:
+            rows = conn.execute(
+                """
+                select id, created_at, job_id, mode, status, severity, category, title, last_error
+                from notifications
+                order by id desc
+                limit ?
+                """,
+                (limit,),
+            ).fetchall()
+    return "\n".join(
+        "\t".join(
+            [
+                str(row["id"]),
+                row["created_at"] or "",
+                row["job_id"] or "",
+                row["mode"] or "",
+                row["status"] or "",
+                row["severity"] or "",
+                row["category"] or "",
+                row["title"] or "",
+                row["last_error"] or "",
+            ]
+        )
+        for row in rows
+    )
+
+
 def _tail_file(path: str, line_count: int) -> str:
     try:
         lines = open(path).read().splitlines()
@@ -141,6 +183,9 @@ def main() -> None:
     commands = subparsers.add_parser("commands")
     commands.add_argument("job_id")
     commands.add_argument("-n", "--limit", type=int, default=100)
+    notifications = subparsers.add_parser("notifications")
+    notifications.add_argument("job_id", nargs="?")
+    notifications.add_argument("-n", "--limit", type=int, default=50)
     logs = subparsers.add_parser("logs")
     logs.add_argument("job_id")
     logs.add_argument("--tail", type=int, default=200)
@@ -159,6 +204,8 @@ def main() -> None:
         print(list_files(args.job_id, args.limit))
     elif args.command == "commands":
         print(list_commands(args.job_id, args.limit))
+    elif args.command == "notifications":
+        print(list_notifications(args.job_id, args.limit))
     elif args.command == "logs":
         print(show_logs(args.job_id, args.tail))
     elif args.command == "ask":

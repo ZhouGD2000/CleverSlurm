@@ -9,9 +9,10 @@ The design rule is simple: deterministic code records facts; AI only summarizes 
 - `aisbatch`: wraps `sbatch --parsable`, passes through normal sbatch options, supports script submissions and basic `--wrap`, copies the original or generated script, writes an instrumented script, records job metadata, git status/diff, stdout/stderr paths, submission events, and a program-finished runtime marker.
 - `aisrun`: wraps direct `srun` execution, passes stdout/stderr through in CLI mode, and records a standalone local job record when outside an existing allocation.
 - `aiscancel`: wraps `scancel`, passes through scancel options, and records a cancellation request event with an optional CleverSlurm-only `--note`.
-- `aitrack`: polls `sacct` for known jobs and updates state, exit code, elapsed time, memory, and node list.
+- `aitrack`: polls `sacct` for known jobs and updates state, exit code, derived exit code, elapsed time, memory, and node list.
 - `aijobs`: queries recent jobs, job details, events, files, runtime commands, log tails, and AI answers over recent job facts.
 - `aisummarize`: sends curated job facts to SiliconFlow and stores structured AI summaries.
+- Feishu notifications: when `aitrack` sees a terminal job state, it records deterministic/semantic analysis, queues a notification, and immediately sends hard failures through a Feishu/Lark custom bot when configured.
 - Runtime command ingestion: imports JSONL records from `commands.log` into `job_commands`.
 - Local fake-Slurm tests: the test suite does not require Slurm.
 
@@ -55,9 +56,27 @@ api_key = "..."
 model = "Qwen/Qwen3.5-4B"
 max_tokens = "512"
 auto_summary = "true"
+
+[notification]
+enabled = "true"
+auto_dispatch = "true"
+ai_analysis = "false"
+
+[notification.feishu]
+webhook_url_env = "AI_SLURM_FEISHU_WEBHOOK"
+secret_env = "AI_SLURM_FEISHU_SECRET"
+message_format = "card"
+batch_window_minutes = "30"
 ```
 
 Do not commit API keys.
+
+Enable Feishu without writing secrets to disk:
+
+```bash
+export AI_SLURM_FEISHU_WEBHOOK="https://open.feishu.cn/open-apis/bot/v2/hook/..."
+export AI_SLURM_FEISHU_SECRET="..."
+```
 
 ## Basic Usage
 
@@ -86,6 +105,7 @@ aijobs events 46644
 aijobs files 46644
 aijobs commands 46644
 aijobs logs 46644 --tail 100
+aijobs notifications 46644
 aijobs ask "最近完成了什么任务？都是些什么工作？"
 ```
 
@@ -117,6 +137,15 @@ aijobs ask "最近失败的任务有哪些，原因是什么？" -n 20
 
 `aijobs ask` sends only recorded database facts to the model. It does not ask AI to infer Slurm job ids, states, exit codes, paths, or commands from memory.
 
+Dispatch pending immediate Feishu notifications manually:
+
+```bash
+ainotify pending
+ainotify dispatch
+```
+
+`aitrack` normally dispatches immediate notifications automatically after it records a terminal state. Normal completions and low-severity cancellations are recorded in the notification table but are not pushed immediately.
+
 ## Support Boundaries
 
 `aisbatch` preserves leading `#SBATCH` directives and passes most normal sbatch command-line options to real `sbatch`. Basic `--wrap` is translated to an instrumented temporary script. Some unusual sbatch forms may still need explicit testing before replacing `sbatch` cluster-wide.
@@ -140,9 +169,9 @@ Run the test suite:
 
 ```bash
 python3 -m pytest -q
-python3 -m compileall -q ai_slurm
+python3 -m compileall -q src/ai_slurm
 ```
 
-The current suite covers fake `sbatch`, fake `srun`, fake `sacct`, fake `scancel`, SQLite writes, runtime command ingestion, Julia include parsing, snapshots, AI request construction, AI question answering over job facts, and query CLI helpers.
+The current suite covers fake `sbatch`, fake `srun`, fake `sacct`, fake `scancel`, SQLite writes, runtime command ingestion, Julia include parsing, snapshots, AI request construction, AI question answering over job facts, notification analysis, Feishu dispatch with fake HTTP, and query CLI helpers.
 
-See [docs/testing.md](docs/testing.md) and [docs/configuration.md](docs/configuration.md).
+See [docs/testing.md](docs/testing.md), [docs/configuration.md](docs/configuration.md), and [docs/notifications.md](docs/notifications.md).
