@@ -11,7 +11,7 @@ The design rule is simple: deterministic code records facts; AI only summarizes 
 - `aiscancel`: wraps `scancel`, passes through scancel options, and records a cancellation request event with an optional CleverSlurm-only `--note`.
 - `aitrack`: polls `sacct` for known jobs and updates state, exit code, derived exit code, elapsed time, memory, and node list.
 - `aijobs`: queries recent jobs, job details, events, files, runtime commands, log tails, and AI answers over recent job facts.
-- `aisummarize`: sends curated job facts to SiliconFlow and stores structured AI summaries.
+- `aisummarize`: sends curated job facts to a configured OpenAI-compatible or Anthropic-compatible model API and stores structured AI summaries.
 - Feishu notifications: when `aitrack` sees a terminal job state, it records deterministic/semantic analysis, queues a notification, and immediately sends hard failures through a Feishu/Lark custom bot when configured.
 - Runtime command ingestion: imports JSONL records from `commands.log` into `job_commands`.
 - Local fake-Slurm tests: the test suite does not require Slurm.
@@ -52,9 +52,12 @@ Example `~/.ai-slurm/config.toml`:
 
 ```toml
 [ai]
-api_key = "..."
-model = "Qwen/Qwen3.5-4B"
+provider = "openai-compatible"
+api_key_env = "DEEPSEEK_API_KEY"
+base_url = "https://api.deepseek.com"
+model = "deepseek-v4-pro"
 max_tokens = "512"
+response_format = "json_object"
 auto_summary = "true"
 
 [notification]
@@ -69,7 +72,7 @@ message_format = "card"
 batch_window_minutes = "30"
 ```
 
-Do not commit API keys.
+Do not commit API keys. Put them in environment variables such as `DEEPSEEK_API_KEY` or `KIMI_API_KEY`.
 
 Enable Feishu without writing secrets to disk:
 
@@ -125,7 +128,7 @@ aisummarize 46644 --completion
 Temporarily override the AI model:
 
 ```bash
-aisummarize 46644 --model Qwen/Qwen3.5-4B --max-tokens 512
+aisummarize 46644 --model deepseek-v4-pro --max-tokens 512
 ```
 
 Ask AI about recent jobs:

@@ -1,6 +1,6 @@
 import json
 
-from ai_slurm.ai.client import SiliconFlowClient
+from ai_slurm.ai.client import ModelClient
 from ai_slurm.ai.summarize import parse_summary_json
 from ai_slurm.db import connect, init_db
 
@@ -91,10 +91,10 @@ def build_question_messages(question: str, facts: list[dict]) -> list[dict]:
 def answer_question(
     question: str,
     *,
-    client: SiliconFlowClient | None = None,
+    client: ModelClient | None = None,
     limit: int = 10,
 ) -> str:
-    client = client or SiliconFlowClient()
+    client = client or ModelClient()
     with connect() as conn:
         init_db(conn)
         facts = _recent_job_facts(conn, limit)

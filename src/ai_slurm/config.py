@@ -1,4 +1,6 @@
 import os
+import json
+import ast
 from pathlib import Path
 
 
@@ -35,23 +37,51 @@ def load_config() -> dict:
             continue
         if section and "=" in line:
             key, value = line.split("=", 1)
-            config[section][key.strip()] = value.strip().strip('"').strip("'")
+            config[section][key.strip()] = _parse_config_value(value.strip())
     return config
 
 
-def ai_api_key() -> str | None:
+def _parse_config_value(value: str) -> str:
+    if (value.startswith('"') and value.endswith('"')) or (value.startswith("'") and value.endswith("'")):
+        try:
+            parsed = ast.literal_eval(value)
+        except (SyntaxError, ValueError):
+            return value[1:-1]
+        if isinstance(parsed, str):
+            return parsed
+    return value
+
+
+def ai_provider() -> str:
     return (
-        os.environ.get("AI_SLURM_AI_API_KEY")
-        or os.environ.get("SILICONFLOW_API_KEY")
-        or load_config().get("ai", {}).get("api_key")
+        os.environ.get("AI_SLURM_AI_PROVIDER")
+        or load_config().get("ai", {}).get("provider")
+        or "openai-compatible"
     )
 
 
-def ai_model() -> str:
+def ai_api_key_env() -> str | None:
+    return os.environ.get("AI_SLURM_AI_API_KEY_ENV") or load_config().get("ai", {}).get("api_key_env")
+
+
+def ai_api_key() -> str | None:
+    env_name = ai_api_key_env()
+    if env_name and os.environ.get(env_name):
+        return os.environ[env_name]
+    return os.environ.get("AI_SLURM_AI_API_KEY") or load_config().get("ai", {}).get("api_key")
+
+
+def ai_base_url() -> str | None:
+    return (
+        os.environ.get("AI_SLURM_AI_BASE_URL")
+        or load_config().get("ai", {}).get("base_url")
+    )
+
+
+def ai_model() -> str | None:
     return (
         os.environ.get("AI_SLURM_AI_MODEL")
         or load_config().get("ai", {}).get("model")
-        or "Qwen/Qwen3.5-4B"
     )
 
 
@@ -67,6 +97,48 @@ def ai_enable_thinking() -> bool | None:
     if value is None:
         return None
     return value.lower() in {"1", "true", "yes", "on"}
+
+
+def ai_temperature() -> float | None:
+    value = os.environ.get("AI_SLURM_AI_TEMPERATURE") or load_config().get("ai", {}).get("temperature")
+    if value is None:
+        return 0.2
+    return float(value)
+
+
+def ai_top_p() -> float | None:
+    value = os.environ.get("AI_SLURM_AI_TOP_P") or load_config().get("ai", {}).get("top_p")
+    if value is None:
+        return 0.7
+    return float(value)
+
+
+def ai_anthropic_version() -> str:
+    return (
+        os.environ.get("AI_SLURM_AI_ANTHROPIC_VERSION")
+        or load_config().get("ai", {}).get("anthropic_version")
+        or "2023-06-01"
+    )
+
+
+def ai_extra_body() -> dict:
+    value = os.environ.get("AI_SLURM_AI_EXTRA_BODY_JSON") or load_config().get("ai", {}).get("extra_body_json")
+    if not value:
+        return {}
+    parsed = json.loads(value)
+    if not isinstance(parsed, dict):
+        raise ValueError("AI extra_body_json must decode to a JSON object")
+    return parsed
+
+
+def ai_response_format() -> str | None:
+    value = os.environ.get("AI_SLURM_AI_RESPONSE_FORMAT") or load_config().get("ai", {}).get("response_format")
+    if value is None:
+        return "json_object"
+    normalized = value.strip().lower()
+    if normalized in {"", "none", "false", "off"}:
+        return None
+    return normalized
 
 
 def ai_auto_summary_enabled() -> bool:

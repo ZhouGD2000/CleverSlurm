@@ -45,8 +45,10 @@ These overrides are also how tests inject fake Slurm commands.
 Environment variables:
 
 ```bash
-export SILICONFLOW_API_KEY=...
-export AI_SLURM_AI_MODEL=Qwen/Qwen3.5-4B
+export DEEPSEEK_API_KEY=...
+export AI_SLURM_AI_PROVIDER=openai-compatible
+export AI_SLURM_AI_BASE_URL=https://api.deepseek.com
+export AI_SLURM_AI_MODEL=deepseek-v4-pro
 export AI_SLURM_AI_MAX_TOKENS=512
 ```
 
@@ -54,13 +56,59 @@ Local config file:
 
 ```toml
 [ai]
-api_key = "..."
-model = "Qwen/Qwen3.5-4B"
+provider = "openai-compatible"
+api_key_env = "DEEPSEEK_API_KEY"
+base_url = "https://api.deepseek.com"
+model = "deepseek-v4-pro"
 max_tokens = "512"
+response_format = "json_object"
 auto_summary = "true"
 ```
 
-`enable_thinking` is not sent by default because some SiliconFlow models reject it. Enable it only for models that support it:
+Supported `provider` values:
+
+- `openai-compatible`: POSTs to `<base_url>/chat/completions`.
+- `anthropic-compatible`: POSTs to `<base_url>/v1/messages`.
+
+Examples:
+
+```toml
+[ai]
+provider = "openai-compatible"
+api_key_env = "KIMI_API_KEY"
+base_url = "https://api.kimi.com/coding/v1"
+model = "kimi-for-coding"
+max_tokens = "512"
+```
+
+```toml
+[ai]
+provider = "anthropic-compatible"
+api_key_env = "KIMI_API_KEY"
+base_url = "https://api.kimi.com/coding/"
+model = "kimi-for-coding"
+max_tokens = "512"
+```
+
+```toml
+[ai]
+provider = "anthropic-compatible"
+api_key_env = "DEEPSEEK_API_KEY"
+base_url = "https://api.deepseek.com/anthropic"
+model = "deepseek-v4-pro"
+max_tokens = "512"
+```
+
+`extra_body_json` can pass provider-specific fields to OpenAI-compatible or Anthropic-compatible APIs:
+
+```toml
+[ai]
+extra_body_json = "{\"thinking\":{\"type\":\"enabled\"},\"reasoning_effort\":\"high\"}"
+```
+
+Set `response_format = "none"` if an OpenAI-compatible endpoint rejects `response_format`.
+
+`enable_thinking` is not sent by default because provider support varies. Enable it only for OpenAI-compatible models that support that exact field:
 
 ```toml
 [ai]

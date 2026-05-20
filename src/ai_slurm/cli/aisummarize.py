@@ -12,7 +12,7 @@ def main() -> None:
         action="store_true",
         help="Create a completion/failure summary instead of a submission summary.",
     )
-    parser.add_argument("--model", help="Override the configured SiliconFlow model for this request.")
+    parser.add_argument("--model", help="Override the configured AI model for this request.")
     parser.add_argument("--max-tokens", type=int, help="Override max output tokens for this request.")
     parser.add_argument(
         "--enable-thinking",

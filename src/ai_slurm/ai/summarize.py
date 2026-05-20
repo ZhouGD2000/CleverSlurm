@@ -1,7 +1,7 @@
 import json
 from datetime import datetime, timezone
 
-from ai_slurm.ai.client import SiliconFlowClient
+from ai_slurm.ai.client import ModelClient
 from ai_slurm.ai.prompts import completion_messages, submission_messages
 from ai_slurm.db import connect, init_db
 
@@ -42,12 +42,12 @@ def _job_facts(conn, job_id: str) -> dict:
 def summarize_submission(
     job_id: str,
     *,
-    client: SiliconFlowClient | None = None,
+    client: ModelClient | None = None,
     model: str | None = None,
     max_tokens: int | None = None,
     enable_thinking: bool | None = None,
 ) -> dict:
-    client = client or SiliconFlowClient(model=model, max_tokens=max_tokens, enable_thinking=enable_thinking)
+    client = client or ModelClient(model=model, max_tokens=max_tokens, enable_thinking=enable_thinking)
     with connect() as conn:
         init_db(conn)
         facts = _job_facts(conn, job_id)
@@ -69,12 +69,12 @@ def summarize_submission(
 def summarize_completion(
     job_id: str,
     *,
-    client: SiliconFlowClient | None = None,
+    client: ModelClient | None = None,
     model: str | None = None,
     max_tokens: int | None = None,
     enable_thinking: bool | None = None,
 ) -> dict:
-    client = client or SiliconFlowClient(model=model, max_tokens=max_tokens, enable_thinking=enable_thinking)
+    client = client or ModelClient(model=model, max_tokens=max_tokens, enable_thinking=enable_thinking)
     with connect() as conn:
         init_db(conn)
         facts = _job_facts(conn, job_id)

@@ -2,7 +2,7 @@ import json
 from pathlib import Path
 from typing import Any
 
-from ai_slurm.ai.client import SiliconFlowClient
+from ai_slurm.ai.client import ModelClient
 from ai_slurm.notify.analysis import build_notification_text, decide_notification
 
 
@@ -140,9 +140,9 @@ def request_ai_semantic_analysis(
     job_id: str,
     analysis: dict[str, Any],
     *,
-    client: SiliconFlowClient | None = None,
+    client: ModelClient | None = None,
 ) -> dict[str, Any]:
-    client = client or SiliconFlowClient()
+    client = client or ModelClient()
     packet = build_compact_log_packet(conn, job_id, analysis)
     content = client.chat_json(semantic_messages(packet))
     return parse_ai_analysis_json(content)
