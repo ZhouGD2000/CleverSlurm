@@ -4,6 +4,17 @@ from pathlib import Path
 import pytest
 
 
+PROJECT_ROOT = Path(__file__).resolve().parents[1]
+SRC_DIR = PROJECT_ROOT / "src"
+
+
+@pytest.fixture(autouse=True)
+def source_tree_on_pythonpath(monkeypatch):
+    current = os.environ.get("PYTHONPATH")
+    value = str(SRC_DIR) if not current else f"{SRC_DIR}{os.pathsep}{current}"
+    monkeypatch.setenv("PYTHONPATH", value)
+
+
 @pytest.fixture
 def isolated_home(tmp_path, monkeypatch):
     home = tmp_path / "home"

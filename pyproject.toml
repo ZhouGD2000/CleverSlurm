@@ -16,5 +16,9 @@ aijobs = "ai_slurm.cli.aijobs:main"
 aitrack = "ai_slurm.cli.aitrack:main"
 aisummarize = "ai_slurm.cli.aisummarize:main"
 
+[tool.setuptools.packages.find]
+where = ["src"]
+
 [tool.pytest.ini_options]
 testpaths = ["tests"]
+pythonpath = ["src"]

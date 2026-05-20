@@ -1,4 +1,5 @@
 import json
+import os
 import subprocess
 import sys
 
@@ -11,11 +12,12 @@ def test_runtime_wrapper_writes_command_log_and_execs_real_program(tmp_path):
         "#!/bin/sh\nprintf 'real:%s\\n' \"$1\"\n",
     )
     log_dir = tmp_path / "runtime"
-    env = {
+    env = os.environ.copy()
+    env.update({
         "AI_SLURM_LOG_DIR": str(log_dir),
         "AI_SLURM_JOB_ID": "123456",
         "AI_REAL_JULIA": str(real_julia),
-    }
+    })
 
     result = subprocess.run(
         [sys.executable, "-m", "ai_slurm.runtime.wrapper", "julia", "script.jl", "--U", "4"],

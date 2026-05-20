@@ -23,10 +23,10 @@ From the repository root:
 python3 -m pip install -e .
 ```
 
-For development without installing console scripts, run with `PYTHONPATH=.`:
+For development without installing console scripts, run with `PYTHONPATH=src`:
 
 ```bash
-PYTHONPATH=. python3 -m ai_slurm.cli.aisbatch job.slurm
+PYTHONPATH=src python3 -m ai_slurm.cli.aisbatch job.slurm
 ```
 
 ## Configuration

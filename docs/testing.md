@@ -64,10 +64,10 @@ EOF
 Submit and track:
 
 ```bash
-AI_SLURM_ROOT=$PWD/.ai-slurm-real PYTHONPATH=/path/to/cleverslurm \
+AI_SLURM_ROOT=$PWD/.ai-slurm-real PYTHONPATH=/path/to/cleverslurm/src \
   python3 -m ai_slurm.cli.aisbatch smoke_real.slurm
 
-AI_SLURM_ROOT=$PWD/.ai-slurm-real PYTHONPATH=/path/to/cleverslurm \
+AI_SLURM_ROOT=$PWD/.ai-slurm-real PYTHONPATH=/path/to/cleverslurm/src \
   python3 - <<'PY'
 from ai_slurm.slurm.tracker import track_once
 track_once()
@@ -77,7 +77,7 @@ PY
 Inspect the job:
 
 ```bash
-AI_SLURM_ROOT=$PWD/.ai-slurm-real PYTHONPATH=/path/to/cleverslurm \
+AI_SLURM_ROOT=$PWD/.ai-slurm-real PYTHONPATH=/path/to/cleverslurm/src \
   python3 - <<'PY'
 from ai_slurm.cli.aijobs import show_job, show_logs
 job_id = "replace-with-job-id"
