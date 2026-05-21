@@ -24,6 +24,14 @@ From the repository root:
 python3 -m pip install -e .
 ```
 
+Uninstall the editable package and console scripts:
+
+```bash
+python3 -m pip uninstall ai-slurm
+```
+
+This removes the installed Python package entry and command wrappers such as `aisbatch`, `aisrun`, `aijobs`, and `ainotify` from that Python environment. It does not remove runtime data or config under `~/.ai-slurm/`. Remove that directory separately only when you intentionally want to delete the local job database, copied scripts, logs, and secrets/config.
+
 For development without installing console scripts, run with `PYTHONPATH=src`:
 
 ```bash
