@@ -24,13 +24,20 @@ From the repository root:
 python3 -m pip install -e .
 ```
 
+Installation does not start automatic tracking. Enable it explicitly after install when you want CleverSlurm to refresh job state and dispatch Feishu notifications from cron:
+
+```bash
+ctrack auto on
+```
+
 Uninstall the editable package and console scripts:
 
 ```bash
+ctrack auto off
 python3 -m pip uninstall CleverSlurm
 ```
 
-This removes the installed Python package entry and command wrappers such as `csbatch`, `csrun`, `cjobs`, and `cnotify` from that Python environment. It does not remove runtime data or config under `~/.cslurm/`. Remove that directory separately only when you intentionally want to delete the local job database, copied scripts, logs, and secrets/config.
+Run `ctrack auto off` before uninstalling because `pip uninstall` does not run a CleverSlurm cleanup hook. If the managed cron entry is left behind, it checks whether `cslurm` is still importable before every tracker run; if not, it removes only the marked CleverSlurm block from the user's crontab and exits. In source mode, the source tree passed with `--repo` still counts as importable code while it remains on disk. The uninstall command removes the installed Python package entry and command wrappers such as `csbatch`, `csrun`, `cjobs`, and `cnotify` from that Python environment. It does not remove runtime data or config under `~/.cslurm/`. Remove that directory separately only when you intentionally want to delete the local job database, copied scripts, logs, and secrets/config.
 
 For development without installing console scripts, run with `PYTHONPATH=src`:
 
@@ -117,7 +124,7 @@ ctrack auto restart
 ctrack auto off
 ```
 
-The generated cron entry uses `flock`, runs once per minute, writes logs to `~/.cslurm/ctrack.log`, and only edits the marked CleverSlurm block in the user's crontab.
+The generated cron entry uses `flock`, runs once per minute, writes logs to `~/.cslurm/ctrack.log`, and only edits the marked CleverSlurm block in the user's crontab. Each run first checks whether `cslurm` can still be imported with the generated environment; if that check fails, the cron command removes its own marked block and exits.
 
 Inspect jobs:
 

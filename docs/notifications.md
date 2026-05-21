@@ -113,7 +113,7 @@ When running from source without installing console scripts, use:
 PYTHONPATH=/path/to/cleverslurm/src python3 -m cslurm.cli.ctrack auto on --repo /path/to/cleverslurm
 ```
 
-The generated cron entry runs once per minute, uses `flock` to avoid overlapping tracker runs if Slurm accounting or Feishu is slow, and writes logs to `~/.cslurm/ctrack.log`. The command only edits the marked `# BEGIN CleverSlurm ctrack` block in the user's crontab.
+The generated cron entry runs once per minute, uses `flock` to avoid overlapping tracker runs if Slurm accounting or Feishu is slow, and writes logs to `~/.cslurm/ctrack.log`. The command only edits the marked `# BEGIN CleverSlurm ctrack` block in the user's crontab. Each run first checks whether `cslurm` can still be imported with the generated environment; if that check fails because the package or source checkout is gone, the cron command removes its own marked block and exits.
 
 Enable AI semantic log analysis for completion notifications:
 

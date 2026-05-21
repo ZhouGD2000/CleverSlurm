@@ -1,3 +1,5 @@
+import os
+import subprocess
 from pathlib import Path
 
 
@@ -29,7 +31,81 @@ def test_auto_track_enable_replaces_only_managed_cron_block(isolated_home, monke
     assert "old command" not in written[0]
     assert "15 3 * * * echo keep" in written[0]
     assert "30 4 * * * echo also-keep" in written[0]
-    assert written[0].count(auto_track.BEGIN_MARKER) == 1
+    assert written[0].splitlines().count(auto_track.BEGIN_MARKER) == 1
+
+
+def test_auto_track_cron_line_self_cleans_when_cslurm_cannot_import(isolated_home, tmp_path):
+    from cslurm import auto_track
+
+    repo = tmp_path / "repo"
+    (repo / "src" / "cslurm").mkdir(parents=True)
+
+    line = auto_track.build_cron_line(repo_dir=repo, python_executable="/usr/bin/python3")
+
+    assert "/bin/sh -lc" in line
+    assert "import cslurm" in line
+    assert "crontab -l" in line
+    assert "awk" in line
+    assert "begin=" in line
+    assert "end=" in line
+    assert auto_track.BEGIN_MARKER in line
+    assert auto_track.END_MARKER in line
+    assert "crontab -" in line
+    assert "-m cslurm.cli.ctrack" in line
+    assert "CSLURM_ROOT=" + str(isolated_home) in line
+
+
+def test_auto_track_cron_command_removes_managed_block_when_import_fails(isolated_home, monkeypatch, tmp_path):
+    from cslurm import auto_track
+
+    repo = tmp_path / "repo"
+    repo.mkdir()
+    fake_bin = tmp_path / "bin"
+    fake_bin.mkdir()
+    crontab_file = tmp_path / "crontab.txt"
+    fake_crontab = fake_bin / "crontab"
+    fake_crontab.write_text(
+        "\n".join(
+            [
+                "#!/bin/sh",
+                "set -eu",
+                'if [ "$1" = "-l" ]; then',
+                '  cat "$CSLURM_TEST_CRONTAB"',
+                'elif [ "$1" = "-" ]; then',
+                '  tmp="${CSLURM_TEST_CRONTAB}.tmp"',
+                '  cat > "$tmp"',
+                '  mv "$tmp" "$CSLURM_TEST_CRONTAB"',
+                "else",
+                "  exit 2",
+                "fi",
+                "",
+            ]
+        )
+    )
+    fake_crontab.chmod(0o755)
+    fake_python = tmp_path / "python-fail"
+    fake_python.write_text("#!/bin/sh\nexit 1\n")
+    fake_python.chmod(0o755)
+    monkeypatch.setenv("PATH", f"{fake_bin}{os.pathsep}{os.environ.get('PATH', '')}")
+    monkeypatch.setenv("CSLURM_TEST_CRONTAB", str(crontab_file))
+
+    line = auto_track.build_cron_line(repo_dir=repo, python_executable=str(fake_python))
+    crontab_file.write_text(
+        "\n".join(
+            [
+                "15 3 * * * echo keep",
+                auto_track.BEGIN_MARKER,
+                line,
+                auto_track.END_MARKER,
+                "30 4 * * * echo also-keep",
+                "",
+            ]
+        )
+    )
+
+    subprocess.run(line.split(" ", 5)[5], shell=True, check=True, env=os.environ.copy())
+
+    assert crontab_file.read_text() == "15 3 * * * echo keep\n30 4 * * * echo also-keep\n"
 
 
 def test_auto_track_disable_removes_managed_block(monkeypatch):

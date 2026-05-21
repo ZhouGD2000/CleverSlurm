@@ -76,11 +76,36 @@ def build_cron_line(
     ]
     if (repo / "src" / "cslurm").is_dir():
         env_parts.append(f"PYTHONPATH={shlex.quote(str(repo / 'src'))}")
-    command = " ".join(
+    cleanup = " ".join(
         [
-            "cd",
-            shlex.quote(str(repo)),
-            "&&",
+            "crontab",
+            "-l",
+            "2>/dev/null",
+            "|",
+            "awk",
+            "-v",
+            f"begin={shlex.quote(BEGIN_MARKER)}",
+            "-v",
+            f"end={shlex.quote(END_MARKER)}",
+            shlex.quote("$0 == begin { drop = 1; next } $0 == end { drop = 0; next } !drop { print }"),
+            "|",
+            "crontab",
+            "-",
+        ]
+    )
+    import_check = " ".join(
+        [
+            "env",
+            *env_parts,
+            shlex.quote(python),
+            "-c",
+            shlex.quote("import cslurm"),
+            ">/dev/null",
+            "2>&1",
+        ]
+    )
+    track_command = " ".join(
+        [
             "/usr/bin/flock",
             "-n",
             shlex.quote(str(lock)),
@@ -94,7 +119,21 @@ def build_cron_line(
             "2>&1",
         ]
     )
-    return f"{schedule} {command}"
+    script = " ".join(
+        [
+            f"PATH={shlex.quote(path)}; export PATH;",
+            f"_cslurm_cleanup_cron() {{ {cleanup}; }};",
+            "cd",
+            shlex.quote(str(repo)),
+            "||",
+            "{ _cslurm_cleanup_cron; exit 0; };",
+            import_check,
+            "||",
+            "{ _cslurm_cleanup_cron; exit 0; };",
+            track_command,
+        ]
+    )
+    return f"{schedule} /bin/sh -lc {shlex.quote(script)}"
 
 
 def _read_crontab() -> str:
