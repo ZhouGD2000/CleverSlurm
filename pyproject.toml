@@ -16,6 +16,7 @@ cjobs = "cslurm.cli.cjobs:main"
 ctrack = "cslurm.cli.ctrack:main"
 csummarize = "cslurm.cli.csummarize:main"
 cnotify = "cslurm.cli.cnotify:main"
+cshim = "cslurm.cli.cshim:main"
 
 [tool.setuptools.packages.find]
 where = ["src"]

@@ -107,6 +107,21 @@ csbatch -p CPU2 --time=00:01:00 job.slurm arg1 arg2
 csbatch -p CPU2 --wrap "hostname && python3 script.py"
 ```
 
+Intercept scripts that call Slurm command names directly:
+
+```bash
+cshim install
+cshim status
+```
+
+`alias sbatch=csbatch` only affects commands typed through an interactive shell. It does not affect Python code such as `subprocess.run(["sbatch", "job.slurm"])`, and it is usually not loaded for commands sent as `ssh host '...'`. `cshim install` creates user-level `sbatch`, `srun`, and `scancel` wrapper executables in the same directory as `csbatch`, so PATH lookup works for subprocesses too. The wrappers export `CSLURM_SBATCH`, `CSLURM_SRUN`, and `CSLURM_SCANCEL` to the original Slurm commands, then exec `csbatch`, `csrun`, or `cscancel`.
+
+Remove only CleverSlurm-managed shims:
+
+```bash
+cshim remove
+```
+
 After a successful submission, `csbatch` queues the AI submission summary in a detached background worker and returns immediately. `cjobs events <job_id>` first shows `AI_SUMMARY_QUEUED`; when the worker finishes it records `AI_SUMMARY_CREATED` and stores `summary_json`, or records `AI_SUMMARY_FAILED` if the request fails. Worker stdout/stderr goes to `~/.cslurm/jobs/<job_id>/auto_summary.log`.
 
 Track known jobs:
