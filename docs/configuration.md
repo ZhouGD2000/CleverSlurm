@@ -151,6 +151,8 @@ export AI_SLURM_FEISHU_WEBHOOK="https://open.feishu.cn/open-apis/bot/v2/hook/...
 export AI_SLURM_FEISHU_SECRET="..."
 ```
 
+This webhook sends to the Feishu chat where the custom bot is installed. It is usually a group notification path, not arbitrary personal direct messaging. Direct one-to-one messages require a separate Feishu app bot backend and are not implemented yet. See [Feishu Setup](feishu_setup.md) for Feishu-side setup steps and the app-bot requirements for personal delivery.
+
 Optional config:
 
 ```toml

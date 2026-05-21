@@ -56,6 +56,10 @@ export AI_SLURM_FEISHU_SECRET="..."
 
 If the bot does not use signing, omit `AI_SLURM_FEISHU_SECRET`. If the bot uses keyword validation, make sure the keyword accepts `AI-Slurm`, which is included in generated titles.
 
+The current backend sends to the Feishu chat where the custom bot webhook is installed. It cannot choose an arbitrary personal recipient at send time. For one-person delivery with the current code, use a private chat/group that contains only the intended recipient and the custom bot, if your Feishu tenant permits that. True direct messages require a Feishu app bot backend with app ID, app secret, recipient IDs, token handling, and the IM send-message API.
+
+See [Feishu Setup](feishu_setup.md) for the Feishu-side steps, security settings, and the difference between custom webhooks and app-bot direct messages.
+
 Optional `~/.ai-slurm/config.toml`:
 
 ```toml

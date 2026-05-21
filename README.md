@@ -180,4 +180,4 @@ python3 -m compileall -q src/ai_slurm
 
 The current suite covers fake `sbatch`, fake `srun`, fake `sacct`, fake `scancel`, SQLite writes, runtime command ingestion, Julia include parsing, snapshots, AI request construction, AI question answering over job facts, notification analysis, Feishu immediate and grouped dispatch with fake HTTP, and query CLI helpers.
 
-See [docs/testing.md](docs/testing.md), [docs/configuration.md](docs/configuration.md), and [docs/notifications.md](docs/notifications.md).
+See [docs/testing.md](docs/testing.md), [docs/configuration.md](docs/configuration.md), [docs/notifications.md](docs/notifications.md), and [docs/feishu_setup.md](docs/feishu_setup.md).
