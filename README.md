@@ -165,7 +165,7 @@ cjobs ask "最近完成了什么任务？都是些什么工作？"
 cjobs ask "最近失败的任务有哪些，原因是什么？" -n 20
 ```
 
-`cjobs ask` sends only recorded database facts to the model. It does not ask AI to infer Slurm job ids, states, exit codes, paths, or commands from memory.
+`cjobs ask` sends only recorded database facts to the model. It uses a natural-language request with a capped answer length, does not force provider JSON mode, and does not ask AI to infer Slurm job ids, states, exit codes, paths, or commands from memory. If the AI request fails or returns an empty answer, `cjobs ask` prints a deterministic summary from the local job database instead of a traceback.
 
 Dispatch pending Feishu notifications manually:
 

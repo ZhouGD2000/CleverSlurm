@@ -112,9 +112,9 @@ max_tokens = "512"
 extra_body_json = "{\"thinking\":{\"type\":\"enabled\"},\"reasoning_effort\":\"high\"}"
 ```
 
-CleverSlurm does not send `response_format` by default because provider support differs, and some models can become slow or fail when JSON mode is forced. The prompts still ask for one JSON object, and CleverSlurm extracts that object even when a provider wraps it in Markdown fences or short surrounding text.
+CleverSlurm does not send `response_format` by default because provider support differs, and some models can become slow or fail when JSON mode is forced. Structured features such as summaries and notification analysis still ask for one JSON object, and CleverSlurm extracts that object even when a provider wraps it in Markdown fences or short surrounding text.
 
-If a provider returns invalid JSON or times out on a structured response, the AI-facing commands fall back to a shorter natural-language prompt and store the model's text inside a structured local record. This keeps `csbatch` automatic summaries, `csummarize`, `cjobs ask`, and notification AI analysis usable on smaller or less JSON-stable models.
+If a provider returns invalid JSON or times out on a structured response, structured AI commands fall back to a shorter natural-language prompt and store the model's text inside a structured local record. This keeps `csbatch` automatic summaries, `csummarize`, and notification AI analysis usable on smaller or less JSON-stable models. `cjobs ask` is already a natural-language answer path: it does not force JSON mode, caps its answer length, and falls back to a deterministic local database summary if the model request fails.
 
 For an OpenAI-compatible endpoint that benefits from JSON mode, enable it explicitly:
 
@@ -157,7 +157,7 @@ format = "openai"
 base_url = "https://api.siliconflow.cn/v1"
 model = "Qwen/Qwen3.5-4B"
 fallback_models = "Qwen/Qwen2.5-7B-Instruct"
-timeout_seconds = "12"
+timeout_seconds = "30"
 enable_thinking = "false"
 response_format = "none"
 ```
@@ -168,7 +168,7 @@ The same AI configuration is used by:
 cjobs ask "最近完成了什么任务？都是些什么工作？"
 ```
 
-`cjobs ask` builds a JSON context from recent SQLite job records, then asks the configured model to answer from that context only.
+`cjobs ask` builds a JSON context from recent SQLite job records, then asks the configured model to answer from that context only. It does not require a JSON response and will print local recorded facts if the AI provider is unavailable or too slow.
 
 `csbatch` queues a submission summary in a detached background worker after it records a successful submission, so the submit command does not wait for the model request. The queue event is recorded as `AI_SUMMARY_QUEUED`; worker success records `AI_SUMMARY_CREATED`, and worker failure records `AI_SUMMARY_FAILED`. Worker stdout/stderr is written to `~/.cslurm/jobs/<job_id>/auto_summary.log`. Disable automatic summaries when needed:
 

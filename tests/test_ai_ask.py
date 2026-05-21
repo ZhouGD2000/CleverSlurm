@@ -10,23 +10,19 @@ class FakeClient:
         self.messages = None
 
     def chat_json(self, messages):
-        self.messages = messages
-        return json.dumps(self.content)
-
-
-class FallbackClient:
-    def __init__(self, text):
-        self.text = text
-        self.json_messages = None
-        self.raw_messages = None
-
-    def chat_json(self, messages):
-        self.json_messages = messages
-        raise RuntimeError("json failed")
+        raise AssertionError("cjobs ask should not make a JSON request")
 
     def chat_raw(self, messages):
-        self.raw_messages = messages
-        return self.text
+        self.messages = messages
+        return self.content
+
+
+class FailingClient:
+    def chat_json(self, messages):
+        raise AssertionError("cjobs ask should not make a JSON request")
+
+    def chat_raw(self, messages):
+        raise RuntimeError("AI model request timed out")
 
 
 def test_answer_question_sends_recent_job_facts_to_ai(isolated_home):
@@ -49,7 +45,7 @@ def test_answer_question_sends_recent_job_facts_to_ai(isolated_home):
             "values ('46644', '2026-05-16T18:45:59+00:00', 'cpu12', '/work', 'python', '/usr/bin/python3', '[\"-c\", \"print(1)\"]', null, 'runtime-wrapper')"
         )
 
-    fake = FakeClient({"answer": "最近完成了 46644：一次 CleverSlurm smoke test。"})
+    fake = FakeClient("最近完成了 46644：一次 CleverSlurm smoke test。")
 
     answer = answer_question("最近完成了什么任务？都是些什么工作？", client=fake, limit=5)
 
@@ -60,22 +56,12 @@ def test_answer_question_sends_recent_job_facts_to_ai(isolated_home):
     assert "UNKNOWN -> COMPLETED" in fake.messages[1]["content"]
 
 
-def test_answer_question_requires_answer_field(isolated_home):
-    fake = FakeClient({"not_answer": "missing"})
+def test_answer_question_returns_local_message_for_empty_ai_answer(isolated_home):
+    fake = FakeClient("")
 
-    try:
-        answer_question("最近完成了什么任务？", client=fake)
-    except ValueError as exc:
-        assert "answer" in str(exc)
-    else:
-        raise AssertionError("expected ValueError")
+    answer = answer_question("最近完成了什么任务？", client=fake)
 
-
-def test_answer_question_accepts_json_with_surrounding_text(isolated_home):
-    fake = FakeClient({"answer": "unused"})
-    fake.chat_json = lambda messages: 'Result:\n{"answer":"OK"}\nDone.'
-
-    assert answer_question("最近完成了什么任务？", client=fake) == "OK"
+    assert "没有找到最近任务记录" in answer
 
 
 def test_answer_question_does_not_send_ai_failure_events(isolated_home):
@@ -94,7 +80,7 @@ def test_answer_question_does_not_send_ai_failure_events(isolated_home):
             "values ('46644', 't', 'STATE_CHANGED', 'UNKNOWN -> COMPLETED')"
         )
 
-    fake = FakeClient({"answer": "ok"})
+    fake = FakeClient("ok")
 
     answer_question("最近完成了什么任务？", client=fake)
 
@@ -104,7 +90,7 @@ def test_answer_question_does_not_send_ai_failure_events(isolated_home):
     assert "STATE_CHANGED" in content
 
 
-def test_answer_question_falls_back_to_text_answer(isolated_home):
+def test_answer_question_returns_deterministic_fallback_when_ai_fails(isolated_home):
     with connect() as conn:
         init_db(conn)
         conn.execute(
@@ -112,7 +98,9 @@ def test_answer_question_falls_back_to_text_answer(isolated_home):
             "values ('46644', '2026-05-16T18:45:57+00:00', '/work', 'csbatch smoke.slurm', 'smoke', 'COMPLETED', 't', 't')"
         )
 
-    fake = FallbackClient("最近完成了 46644。")
+    answer = answer_question("最近运行了什么任务？", client=FailingClient())
 
-    assert answer_question("最近完成了什么任务？", client=fake) == "最近完成了 46644。"
-    assert fake.raw_messages is not None
+    assert "AI 请求失败" in answer
+    assert "46644" in answer
+    assert "COMPLETED" in answer
+    assert "csbatch smoke.slurm" in answer
