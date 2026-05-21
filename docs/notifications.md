@@ -98,13 +98,22 @@ cnotify dispatch --mode all
 
 `cnotify dispatch --mode batch --force` is useful for testing because it sends the grouped summary without waiting for `batch_window_minutes`.
 
-For automatic status refresh and notification dispatch, install a cron entry on the Slurm login/management host:
+For automatic status refresh and notification dispatch, let `ctrack` install a marked cron entry on the Slurm login/management host:
 
-```cron
-* * * * * cd /home/zgd/software/cleverslurm && /usr/bin/flock -n $HOME/.cslurm/ctrack.lock env CSLURM_ROOT=$HOME/.cslurm PYTHONPATH=/home/zgd/software/cleverslurm/src python3 -m cslurm.cli.ctrack >> $HOME/.cslurm/ctrack.log 2>&1
+```bash
+ctrack auto on
+ctrack auto status
+ctrack auto restart
+ctrack auto off
 ```
 
-The `flock` guard avoids overlapping tracker runs if Slurm accounting or Feishu is slow.
+When running from source without installing console scripts, use:
+
+```bash
+PYTHONPATH=/home/zgd/software/cleverslurm/src python3 -m cslurm.cli.ctrack auto on --repo /home/zgd/software/cleverslurm
+```
+
+The generated cron entry runs once per minute, uses `flock` to avoid overlapping tracker runs if Slurm accounting or Feishu is slow, and writes logs to `~/.cslurm/ctrack.log`. The command only edits the marked `# BEGIN CleverSlurm ctrack` block in the user's crontab.
 
 Enable AI semantic log analysis for completion notifications:
 

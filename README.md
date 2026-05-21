@@ -108,11 +108,16 @@ Track known jobs:
 ctrack
 ```
 
-For automatic state refresh and Feishu dispatch, run `ctrack` from cron. Use an absolute repository path and `flock` so a slow poll cannot overlap the next minute:
+For automatic state refresh and Feishu dispatch, let `ctrack` manage a cron entry:
 
-```cron
-* * * * * cd /home/zgd/software/cleverslurm && /usr/bin/flock -n $HOME/.cslurm/ctrack.lock env CSLURM_ROOT=$HOME/.cslurm PYTHONPATH=/home/zgd/software/cleverslurm/src python3 -m cslurm.cli.ctrack >> $HOME/.cslurm/ctrack.log 2>&1
+```bash
+ctrack auto on
+ctrack auto status
+ctrack auto restart
+ctrack auto off
 ```
+
+The generated cron entry uses `flock`, runs once per minute, writes logs to `~/.cslurm/ctrack.log`, and only edits the marked CleverSlurm block in the user's crontab.
 
 Inspect jobs:
 
