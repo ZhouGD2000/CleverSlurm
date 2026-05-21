@@ -112,11 +112,18 @@ extra_body_json = "{\"thinking\":{\"type\":\"enabled\"},\"reasoning_effort\":\"h
 
 Set `response_format = "none"` if an OpenAI-compatible endpoint rejects `response_format`.
 
-`enable_thinking` is not sent by default because provider support varies. Enable it only for OpenAI-compatible models that support that exact field:
+`enable_thinking` is sent only when it is present in config or `AI_SLURM_AI_ENABLE_THINKING` is set. If it is absent, CleverSlurm omits the field entirely because provider support varies. Set it explicitly for OpenAI-compatible models that support that exact field:
 
 ```toml
 [ai]
 enable_thinking = "true"
+```
+
+or, for SiliconFlow Qwen chat/json use where thinking should be disabled:
+
+```toml
+[ai]
+enable_thinking = "false"
 ```
 
 or:

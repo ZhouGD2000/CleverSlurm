@@ -103,6 +103,30 @@ def test_openai_compatible_client_can_send_enable_thinking_when_requested():
     assert captured["body"]["enable_thinking"] is False
 
 
+def test_openai_compatible_client_reads_enable_thinking_false_from_config(isolated_home, monkeypatch):
+    from ai_slurm.config import config_path
+
+    monkeypatch.setenv("TEST_API_KEY", "secret")
+    config_path().write_text(
+        "[ai]\n"
+        "provider = \"openai-compatible\"\n"
+        "api_key_env = \"TEST_API_KEY\"\n"
+        "base_url = \"https://api.example.test/v1\"\n"
+        "model = \"model-a\"\n"
+        "enable_thinking = \"false\"\n"
+    )
+    captured = {}
+
+    def fake_urlopen(request, timeout):
+        captured["body"] = json.loads(request.data.decode())
+        return FakeResponse({"choices": [{"message": {"content": '{"ok":true}'}}]})
+
+    client = ModelClient(urlopen=fake_urlopen)
+    client.chat_json([{"role": "user", "content": "x"}])
+
+    assert captured["body"]["enable_thinking"] is False
+
+
 def test_openai_compatible_client_can_disable_response_format():
     captured = {}
 
