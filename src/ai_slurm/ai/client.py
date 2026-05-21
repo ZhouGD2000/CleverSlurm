@@ -10,11 +10,13 @@ from ai_slurm.config import (
     ai_base_url,
     ai_enable_thinking,
     ai_extra_body,
+    ai_fallback_models,
     ai_max_tokens,
     ai_model,
     ai_provider,
     ai_response_format,
     ai_temperature,
+    ai_timeout_seconds,
     ai_top_p,
 )
 
@@ -22,6 +24,12 @@ from ai_slurm.config import (
 OPENAI_COMPATIBLE = "openai-compatible"
 ANTHROPIC_COMPATIBLE = "anthropic-compatible"
 _CONFIG_DEFAULT = object()
+
+
+class ModelRequestError(RuntimeError):
+    def __init__(self, message: str, *, retryable: bool):
+        super().__init__(message)
+        self.retryable = retryable
 
 
 def _endpoint(base_url: str, suffix: str) -> str:
@@ -60,8 +68,9 @@ class ModelClient:
         top_p: float | None = None,
         extra_body: dict | None = None,
         response_format: str | None | object = _CONFIG_DEFAULT,
+        fallback_models: list[str] | None = None,
         anthropic_version: str | None = None,
-        timeout: int = 60,
+        timeout: int | None = None,
         urlopen: Callable | None = None,
     ):
         self.provider = (provider or ai_provider()).strip().lower()
@@ -86,33 +95,60 @@ class ModelClient:
         self.top_p = ai_top_p() if top_p is None else top_p
         self.extra_body = ai_extra_body() if extra_body is None else extra_body
         self.response_format = ai_response_format() if response_format is _CONFIG_DEFAULT else response_format
+        self.fallback_models = ai_fallback_models() if fallback_models is None else fallback_models
         self.anthropic_version = anthropic_version or ai_anthropic_version()
-        self.timeout = timeout
+        self.timeout = ai_timeout_seconds() if timeout is None else timeout
         self.urlopen = urlopen or urllib.request.urlopen
+        self.last_model: str | None = None
 
     def chat_json(self, messages: list[dict]) -> str:
+        errors = []
+        for model in self._candidate_models():
+            try:
+                content = self._chat_json_once(messages, model=model)
+            except ModelRequestError as exc:
+                errors.append(f"{model}: {exc}")
+                if not exc.retryable:
+                    raise
+                continue
+            self.last_model = model
+            return content
+        detail = " | ".join(errors) if errors else "no models configured"
+        raise RuntimeError(f"AI model request failed for all configured models: {detail}")
+
+    def _candidate_models(self) -> list[str]:
+        seen = set()
+        models = []
+        for model in [self.model, *self.fallback_models]:
+            if model and model not in seen:
+                models.append(model)
+                seen.add(model)
+        return models
+
+    def _chat_json_once(self, messages: list[dict], *, model: str) -> str:
         if self.provider == ANTHROPIC_COMPATIBLE:
-            request = self._anthropic_request(messages)
+            request = self._anthropic_request(messages, model=model)
         else:
-            request = self._openai_request(messages)
+            request = self._openai_request(messages, model=model)
         try:
             with self.urlopen(request, timeout=self.timeout) as response:
                 body = json.loads(response.read().decode())
         except urllib.error.HTTPError as exc:
             detail = exc.fp.read().decode(errors="replace") if exc.fp else str(exc)
-            raise RuntimeError(f"AI model request failed: HTTP {exc.code}: {detail}") from exc
+            retryable = exc.code in {408, 409, 425, 429} or exc.code >= 500
+            raise ModelRequestError(f"AI model request failed: HTTP {exc.code}: {detail}", retryable=retryable) from exc
         except urllib.error.URLError as exc:
-            raise RuntimeError(f"AI model request failed: {exc.reason}") from exc
+            raise ModelRequestError(f"AI model request failed: {exc.reason}", retryable=True) from exc
         except TimeoutError as exc:
-            raise RuntimeError(f"AI model request timed out: {exc}") from exc
+            raise ModelRequestError(f"AI model request timed out: {exc}", retryable=True) from exc
 
         if self.provider == ANTHROPIC_COMPATIBLE:
             return self._parse_anthropic_response(body)
         return self._parse_openai_response(body)
 
-    def _openai_request(self, messages: list[dict]) -> urllib.request.Request:
+    def _openai_request(self, messages: list[dict], *, model: str) -> urllib.request.Request:
         payload = {
-            "model": self.model,
+            "model": model,
             "messages": messages,
             "max_tokens": self.max_tokens,
         }
@@ -135,7 +171,7 @@ class ModelClient:
             method="POST",
         )
 
-    def _anthropic_request(self, messages: list[dict]) -> urllib.request.Request:
+    def _anthropic_request(self, messages: list[dict], *, model: str) -> urllib.request.Request:
         system_parts = [_message_content(message) for message in messages if message.get("role") == "system"]
         anthropic_messages = [
             {
@@ -146,7 +182,7 @@ class ModelClient:
             if message.get("role") != "system"
         ]
         payload = {
-            "model": self.model,
+            "model": model,
             "max_tokens": self.max_tokens,
             "messages": anthropic_messages,
         }

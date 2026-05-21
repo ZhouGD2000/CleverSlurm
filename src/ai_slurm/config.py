@@ -85,6 +85,42 @@ def ai_model() -> str | None:
     )
 
 
+def _split_config_list(value: object) -> list[str]:
+    if value is None:
+        return []
+    if isinstance(value, list):
+        return [str(item).strip() for item in value if str(item).strip()]
+    text = str(value).strip()
+    if not text:
+        return []
+    if text.startswith("["):
+        try:
+            parsed = json.loads(text)
+        except json.JSONDecodeError:
+            try:
+                parsed = ast.literal_eval(text)
+            except (SyntaxError, ValueError):
+                parsed = None
+        if isinstance(parsed, list):
+            return [str(item).strip() for item in parsed if str(item).strip()]
+    return [item.strip() for item in text.split(",") if item.strip()]
+
+
+def ai_fallback_models() -> list[str]:
+    value = (
+        os.environ.get("AI_SLURM_AI_FALLBACK_MODELS")
+        or load_config().get("ai", {}).get("fallback_models")
+    )
+    return _split_config_list(value)
+
+
+def ai_timeout_seconds() -> int:
+    value = os.environ.get("AI_SLURM_AI_TIMEOUT_SECONDS") or load_config().get("ai", {}).get("timeout_seconds")
+    if value is None:
+        return 60
+    return int(value)
+
+
 def ai_max_tokens() -> int:
     value = os.environ.get("AI_SLURM_AI_MAX_TOKENS") or load_config().get("ai", {}).get("max_tokens")
     if value is None:

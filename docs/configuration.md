@@ -50,6 +50,8 @@ export AI_SLURM_AI_PROVIDER=openai-compatible
 export AI_SLURM_AI_BASE_URL=https://api.deepseek.com
 export AI_SLURM_AI_MODEL=deepseek-v4-pro
 export AI_SLURM_AI_MAX_TOKENS=512
+export AI_SLURM_AI_TIMEOUT_SECONDS=30
+export AI_SLURM_AI_FALLBACK_MODELS=deepseek-chat
 ```
 
 Local config file:
@@ -63,6 +65,8 @@ model = "deepseek-v4-pro"
 max_tokens = "512"
 response_format = "json_object"
 auto_summary = "true"
+timeout_seconds = "30"
+fallback_models = "deepseek-chat"
 ```
 
 Supported `provider` values:
@@ -119,6 +123,20 @@ or:
 
 ```bash
 aisummarize 46644 --enable-thinking
+```
+
+`timeout_seconds` controls the read timeout for each model attempt. `fallback_models` is a comma-separated list of models using the same provider protocol and base URL. The primary `model` is always tried first; fallback models are tried only after retryable failures such as timeouts, HTTP 429, or HTTP 5xx responses. HTTP 400/401 style request or authentication errors are not hidden by fallback.
+
+For a SiliconFlow Qwen setup where `Qwen/Qwen3.5-4B` is the preferred model but may occasionally not return promptly, keep it as the primary model and add a same-provider fallback:
+
+```toml
+[ai]
+provider = "openai-compatible"
+base_url = "https://api.siliconflow.cn/v1"
+model = "Qwen/Qwen3.5-4B"
+fallback_models = "Qwen/Qwen3.5-9B"
+timeout_seconds = "12"
+enable_thinking = "false"
 ```
 
 The same AI configuration is used by:

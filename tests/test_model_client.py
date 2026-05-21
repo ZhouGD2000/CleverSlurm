@@ -20,7 +20,7 @@ class FakeResponse:
         return self.body
 
 
-def test_openai_compatible_client_posts_chat_completion_request():
+def test_openai_compatible_client_posts_chat_completion_request(isolated_home):
     captured = {}
 
     def fake_urlopen(request, timeout):
@@ -209,6 +209,86 @@ def test_model_client_reads_escaped_extra_body_json_from_config(isolated_home, m
     client.chat_json([{"role": "user", "content": "x"}])
 
     assert captured["body"]["thinking"] == {"type": "enabled"}
+
+
+def test_model_client_retries_fallback_model_on_timeout():
+    calls = []
+
+    def fake_urlopen(request, timeout):
+        body = json.loads(request.data.decode())
+        calls.append((body["model"], timeout))
+        if body["model"] == "primary-model":
+            raise TimeoutError("read timed out")
+        return FakeResponse({"choices": [{"message": {"content": '{"ok":true}'}}]})
+
+    client = ModelClient(
+        api_key="secret",
+        base_url="https://api.example.test/v1",
+        model="primary-model",
+        fallback_models=["fallback-model"],
+        timeout=7,
+        urlopen=fake_urlopen,
+    )
+
+    assert client.chat_json([{"role": "user", "content": "x"}]) == '{"ok":true}'
+    assert calls == [("primary-model", 7), ("fallback-model", 7)]
+    assert client.last_model == "fallback-model"
+
+
+def test_model_client_does_not_retry_nonretryable_http_errors():
+    calls = []
+
+    def fake_urlopen(request, timeout):
+        body = json.loads(request.data.decode())
+        calls.append(body["model"])
+        raise urllib.error.HTTPError(
+            request.full_url,
+            400,
+            "Bad Request",
+            hdrs=None,
+            fp=FakeHttpErrorBody(b'{"message":"bad request"}'),
+        )
+
+    client = ModelClient(
+        api_key="secret",
+        base_url="https://api.example.test/v1",
+        model="primary-model",
+        fallback_models=["fallback-model"],
+        urlopen=fake_urlopen,
+    )
+
+    with pytest.raises(RuntimeError, match="HTTP 400"):
+        client.chat_json([{"role": "user", "content": "x"}])
+
+    assert calls == ["primary-model"]
+
+
+def test_model_client_reads_timeout_and_fallback_models_from_config(isolated_home, monkeypatch):
+    from ai_slurm.config import config_path
+
+    monkeypatch.setenv("TEST_API_KEY", "secret")
+    config_path().write_text(
+        "[ai]\n"
+        "provider = \"openai-compatible\"\n"
+        "api_key_env = \"TEST_API_KEY\"\n"
+        "base_url = \"https://api.example.test/v1\"\n"
+        "model = \"primary-model\"\n"
+        "fallback_models = \"fallback-a, fallback-b\"\n"
+        "timeout_seconds = \"9\"\n"
+    )
+    calls = []
+
+    def fake_urlopen(request, timeout):
+        body = json.loads(request.data.decode())
+        calls.append((body["model"], timeout))
+        if body["model"] == "primary-model":
+            raise TimeoutError("read timed out")
+        return FakeResponse({"choices": [{"message": {"content": '{"ok":true}'}}]})
+
+    client = ModelClient(urlopen=fake_urlopen)
+
+    assert client.chat_json([{"role": "user", "content": "x"}]) == '{"ok":true}'
+    assert calls == [("primary-model", 9), ("fallback-a", 9)]
 
 
 def test_model_client_requires_configured_base_url_and_model(isolated_home, monkeypatch):
