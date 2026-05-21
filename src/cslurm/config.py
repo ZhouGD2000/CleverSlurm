@@ -260,5 +260,16 @@ def notification_batch_window_minutes() -> int:
     return int(value)
 
 
+def notification_immediate_group_threshold() -> int:
+    value = (
+        _env("CSLURM_NOTIFICATION_IMMEDIATE_GROUP_THRESHOLD")
+        or load_config().get("notification.feishu", {}).get("immediate_group_threshold")
+        or load_config().get("notification", {}).get("immediate_group_threshold")
+    )
+    if value is None:
+        return 10
+    return max(1, int(value))
+
+
 def notification_ai_analysis_enabled() -> bool:
     return _bool_config("CSLURM_NOTIFICATION_AI_ANALYSIS", "notification", "ai_analysis", False)

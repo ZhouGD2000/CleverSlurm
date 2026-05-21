@@ -207,6 +207,7 @@ webhook_url_env = "CSLURM_FEISHU_WEBHOOK"
 secret_env = "CSLURM_FEISHU_SECRET"
 message_format = "card"
 batch_window_minutes = "30"
+immediate_group_threshold = "10"
 ```
 
 If you choose to store the values directly in `~/.cslurm/config.toml`, use:
@@ -220,6 +221,19 @@ secret = "..."
 The `*_env` fields are environment variable names. Direct values are supported for convenience, but environment variables are safer for shared repositories and shell histories.
 
 `ctrack` records a `job_analysis` row and a `notifications` row when a job reaches a terminal Slurm state. Hard failures, nonzero `ExitCode`, and nonzero `DerivedExitCode` are immediate notifications. Normal completions and user cancellations are grouped into batch or digest summary cards after `batch_window_minutes`.
+
+If many immediate notifications are pending at once, CleverSlurm groups them into summary cards once the count reaches `immediate_group_threshold` instead of sending one Feishu message per job. The default threshold is `10`; set it to `1` to always group immediate notifications, or higher to keep small bursts as individual cards:
+
+```bash
+export CSLURM_NOTIFICATION_IMMEDIATE_GROUP_THRESHOLD=10
+```
+
+or:
+
+```toml
+[notification.feishu]
+immediate_group_threshold = "10"
+```
 
 AI semantic log analysis is opt-in:
 

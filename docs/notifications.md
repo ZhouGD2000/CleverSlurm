@@ -72,6 +72,7 @@ webhook_url_env = "CSLURM_FEISHU_WEBHOOK"
 secret_env = "CSLURM_FEISHU_SECRET"
 message_format = "card"
 batch_window_minutes = "30"
+immediate_group_threshold = "10"
 ```
 
 ## Commands
@@ -93,9 +94,17 @@ cnotify dispatch --mode digest --force
 cnotify dispatch --mode all
 ```
 
-`ctrack` dispatches automatically by default. Immediate notifications are sent as individual cards. `batch` and `digest` notifications are grouped by `group_id` when available, otherwise by category, and sent as summary cards once the configured window has elapsed. Set `CSLURM_NOTIFICATION_AUTO_DISPATCH=false` to record rows without sending from the tracker.
+`ctrack` dispatches automatically by default. A small number of immediate hard-failure notifications are sent as individual cards. If pending immediate notifications reach `immediate_group_threshold`, they are grouped by `group_id` when available, otherwise by category, and sent as summary cards. `batch` and `digest` notifications use the same grouping strategy and are sent once the configured window has elapsed. Set `CSLURM_NOTIFICATION_AUTO_DISPATCH=false` to record rows without sending from the tracker.
 
 `cnotify dispatch --mode batch --force` is useful for testing because it sends the grouped summary without waiting for `batch_window_minutes`.
+
+For automatic status refresh and notification dispatch, install a cron entry on the Slurm login/management host:
+
+```cron
+* * * * * cd /home/zgd/software/cleverslurm && /usr/bin/flock -n $HOME/.cslurm/ctrack.lock env CSLURM_ROOT=$HOME/.cslurm PYTHONPATH=/home/zgd/software/cleverslurm/src python3 -m cslurm.cli.ctrack >> $HOME/.cslurm/ctrack.log 2>&1
+```
+
+The `flock` guard avoids overlapping tracker runs if Slurm accounting or Feishu is slow.
 
 Enable AI semantic log analysis for completion notifications:
 

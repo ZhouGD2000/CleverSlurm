@@ -78,6 +78,7 @@ webhook_url_env = "CSLURM_FEISHU_WEBHOOK"
 secret_env = "CSLURM_FEISHU_SECRET"
 message_format = "card"
 batch_window_minutes = "30"
+immediate_group_threshold = "10"
 ```
 
 Do not commit API keys. Put them in environment variables such as `DEEPSEEK_API_KEY` or `KIMI_API_KEY`.
@@ -105,6 +106,12 @@ Track known jobs:
 
 ```bash
 ctrack
+```
+
+For automatic state refresh and Feishu dispatch, run `ctrack` from cron. Use an absolute repository path and `flock` so a slow poll cannot overlap the next minute:
+
+```cron
+* * * * * cd /home/zgd/software/cleverslurm && /usr/bin/flock -n $HOME/.cslurm/ctrack.lock env CSLURM_ROOT=$HOME/.cslurm PYTHONPATH=/home/zgd/software/cleverslurm/src python3 -m cslurm.cli.ctrack >> $HOME/.cslurm/ctrack.log 2>&1
 ```
 
 Inspect jobs:

@@ -63,6 +63,53 @@ def test_immediate_notification_is_sent_and_marked_sent(isolated_home, monkeypat
     assert row[1] is not None
 
 
+def test_immediate_notification_burst_is_sent_as_one_group_summary(isolated_home, monkeypatch):
+    from cslurm.db import connect, init_db
+    from cslurm.notify.dispatcher import enqueue_job_notification
+    from cslurm.notify.feishu import dispatch_pending
+
+    monkeypatch.setenv("CSLURM_FEISHU_WEBHOOK", "https://open.feishu.cn/open-apis/bot/v2/hook/test")
+    monkeypatch.setenv("CSLURM_NOTIFICATION_IMMEDIATE_GROUP_THRESHOLD", "3")
+    sent = []
+
+    def fake_urlopen(request, timeout):
+        sent.append(json.loads(request.data.decode()))
+        return FakeResponse({"code": 0, "msg": "ok"})
+
+    with connect() as conn:
+        init_db(conn)
+        for index in range(5):
+            job_id = str(9000 + index)
+            enqueue_job_notification(
+                conn,
+                {
+                    "job_id": job_id,
+                    "deterministic_status": "hard_failed",
+                    "semantic_status": "hard_failed",
+                    "failure_category": "FAILED",
+                    "severity": "high",
+                    "recommended_notification": "immediate",
+                    "title": f"[CleverSlurm][FAILED] Job {job_id}",
+                    "body": "State: FAILED",
+                },
+            )
+        conn.commit()
+
+    assert dispatch_pending(mode="immediate", urlopen=fake_urlopen) == 1
+
+    with sqlite3.connect(isolated_home / "db.sqlite") as conn:
+        statuses = conn.execute("select distinct status from notifications").fetchall()
+        batch = conn.execute("select mode, status, summary_json from notification_batches").fetchone()
+
+    assert len(sent) == 1
+    assert "[CleverSlurm][IMMEDIATE]" in sent[0]["card"]["header"]["title"]["content"]
+    assert "5 job(s)" in sent[0]["card"]["header"]["title"]["content"]
+    assert [row[0] for row in statuses] == ["batched"]
+    assert batch[0] == "immediate"
+    assert batch[1] == "sent"
+    assert json.loads(batch[2])["total"] == 5
+
+
 def test_duplicate_notifications_do_not_send_twice(isolated_home, monkeypatch):
     from cslurm.db import connect, init_db
     from cslurm.notify.dispatcher import enqueue_job_notification

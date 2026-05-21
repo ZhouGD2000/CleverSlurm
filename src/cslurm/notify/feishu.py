@@ -15,6 +15,7 @@ from cslurm.config import (
     feishu_webhook_url,
     notification_batch_window_minutes,
     notification_enabled,
+    notification_immediate_group_threshold,
 )
 from cslurm.db import connect, init_db
 
@@ -154,7 +155,8 @@ def _summarize_group(mode: str, group_id: str, rows: list[dict[str, Any]]) -> tu
         "semantic_statuses": dict(statuses),
         "representative_jobs": representatives,
     }
-    label = "DIGEST" if mode == "digest" else "BATCH"
+    labels = {"digest": "DIGEST", "immediate": "IMMEDIATE"}
+    label = labels.get(mode, "BATCH")
     title = f"[CleverSlurm][{label}] {group_id}: {len(rows)} job(s)"
     lines = [
         f"Group: {group_id}",
@@ -279,6 +281,16 @@ def _dispatch_immediate(conn, *, limit: int, urlopen, webhook_url: str, secret: 
         """,
         (limit,),
     ).fetchall()
+    if len(rows) >= notification_immediate_group_threshold():
+        return _dispatch_grouped(
+            conn,
+            mode="immediate",
+            limit=limit,
+            force=True,
+            urlopen=urlopen,
+            webhook_url=webhook_url,
+            secret=secret,
+        )
     for row in rows:
         data = {key: row[key] for key in row.keys()}
         try:
