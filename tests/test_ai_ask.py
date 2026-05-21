@@ -54,3 +54,10 @@ def test_answer_question_requires_answer_field(isolated_home):
         assert "answer" in str(exc)
     else:
         raise AssertionError("expected ValueError")
+
+
+def test_answer_question_accepts_json_with_surrounding_text(isolated_home):
+    fake = FakeClient({"answer": "unused"})
+    fake.chat_json = lambda messages: 'Result:\n{"answer":"OK"}\nDone.'
+
+    assert answer_question("最近完成了什么任务？", client=fake) == "OK"

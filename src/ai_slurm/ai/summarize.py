@@ -2,6 +2,7 @@ import json
 from datetime import datetime, timezone
 
 from ai_slurm.ai.client import ModelClient
+from ai_slurm.ai.json_utils import parse_json_object
 from ai_slurm.ai.prompts import completion_messages, submission_messages
 from ai_slurm.db import connect, init_db
 
@@ -11,13 +12,7 @@ def _now() -> str:
 
 
 def parse_summary_json(text: str) -> dict:
-    try:
-        value = json.loads(text)
-    except json.JSONDecodeError as exc:
-        raise ValueError("summary must be valid JSON") from exc
-    if not isinstance(value, dict):
-        raise ValueError("summary must be a JSON object")
-    return value
+    return parse_json_object(text, error_label="summary")
 
 
 def _job_facts(conn, job_id: str) -> dict:

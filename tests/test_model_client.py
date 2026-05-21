@@ -56,7 +56,7 @@ def test_openai_compatible_client_posts_chat_completion_request(isolated_home):
     assert captured["body"]["model"] == "model-a"
     assert captured["body"]["max_tokens"] == 512
     assert "enable_thinking" not in captured["body"]
-    assert captured["body"]["response_format"] == {"type": "json_object"}
+    assert "response_format" not in captured["body"]
 
 
 def test_openai_compatible_client_allows_model_and_extra_body_override():
@@ -127,7 +127,7 @@ def test_openai_compatible_client_reads_enable_thinking_false_from_config(isolat
     assert captured["body"]["enable_thinking"] is False
 
 
-def test_openai_compatible_client_can_disable_response_format():
+def test_openai_compatible_client_can_send_response_format_when_requested():
     captured = {}
 
     def fake_urlopen(request, timeout):
@@ -139,12 +139,12 @@ def test_openai_compatible_client_can_disable_response_format():
         provider="openai-compatible",
         base_url="https://api.example.test/v1",
         model="model-a",
-        response_format=None,
+        response_format="json_object",
         urlopen=fake_urlopen,
     )
     client.chat_json([{"role": "user", "content": "x"}])
 
-    assert "response_format" not in captured["body"]
+    assert captured["body"]["response_format"] == {"type": "json_object"}
 
 
 def test_anthropic_compatible_client_posts_messages_request():
@@ -257,6 +257,68 @@ def test_model_client_retries_fallback_model_on_timeout():
     assert client.chat_json([{"role": "user", "content": "x"}]) == '{"ok":true}'
     assert calls == [("primary-model", 7), ("fallback-model", 7)]
     assert client.last_model == "fallback-model"
+
+
+def test_model_client_retries_same_model_on_transport_error():
+    calls = []
+
+    def fake_urlopen(request, timeout):
+        body = json.loads(request.data.decode())
+        calls.append(body["model"])
+        if len(calls) == 1:
+            raise urllib.error.URLError("EOF occurred in violation of protocol")
+        return FakeResponse({"choices": [{"message": {"content": '{"ok":true}'}}]})
+
+    client = ModelClient(
+        api_key="secret",
+        base_url="https://api.example.test/v1",
+        model="primary-model",
+        fallback_models=[],
+        request_retries=1,
+        urlopen=fake_urlopen,
+    )
+
+    assert client.chat_json([{"role": "user", "content": "x"}]) == '{"ok":true}'
+    assert calls == ["primary-model", "primary-model"]
+    assert client.last_model == "primary-model"
+
+
+def test_model_client_retries_fallback_model_on_non_json_content():
+    calls = []
+
+    def fake_urlopen(request, timeout):
+        body = json.loads(request.data.decode())
+        calls.append(body["model"])
+        if body["model"] == "primary-model":
+            return FakeResponse({"choices": [{"message": {"content": ""}}]})
+        return FakeResponse({"choices": [{"message": {"content": '{"ok":true}'}}]})
+
+    client = ModelClient(
+        api_key="secret",
+        base_url="https://api.example.test/v1",
+        model="primary-model",
+        fallback_models=["fallback-model"],
+        urlopen=fake_urlopen,
+    )
+
+    assert client.chat_json([{"role": "user", "content": "x"}]) == '{"ok":true}'
+    assert calls == ["primary-model", "fallback-model"]
+    assert client.last_model == "fallback-model"
+
+
+def test_model_client_accepts_json_wrapped_in_markdown_fence():
+    def fake_urlopen(request, timeout):
+        return FakeResponse({"choices": [{"message": {"content": '```json\n{"ok":true}\n```'}}]})
+
+    client = ModelClient(
+        api_key="secret",
+        base_url="https://api.example.test/v1",
+        model="primary-model",
+        urlopen=fake_urlopen,
+    )
+
+    assert client.chat_json([{"role": "user", "content": "x"}]) == '```json\n{"ok":true}\n```'
+    assert client.last_model == "primary-model"
 
 
 def test_model_client_does_not_retry_nonretryable_http_errors():

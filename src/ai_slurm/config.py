@@ -121,6 +121,13 @@ def ai_timeout_seconds() -> int:
     return int(value)
 
 
+def ai_request_retries() -> int:
+    value = os.environ.get("AI_SLURM_AI_REQUEST_RETRIES") or load_config().get("ai", {}).get("request_retries")
+    if value is None:
+        return 1
+    return max(0, int(value))
+
+
 def ai_max_tokens() -> int:
     value = os.environ.get("AI_SLURM_AI_MAX_TOKENS") or load_config().get("ai", {}).get("max_tokens")
     if value is None:
@@ -170,7 +177,7 @@ def ai_extra_body() -> dict:
 def ai_response_format() -> str | None:
     value = os.environ.get("AI_SLURM_AI_RESPONSE_FORMAT") or load_config().get("ai", {}).get("response_format")
     if value is None:
-        return "json_object"
+        return None
     normalized = value.strip().lower()
     if normalized in {"", "none", "false", "off"}:
         return None

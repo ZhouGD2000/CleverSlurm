@@ -4,6 +4,7 @@ import urllib.request
 from collections.abc import Callable
 from urllib.parse import urljoin
 
+from ai_slurm.ai.json_utils import parse_json_object
 from ai_slurm.config import (
     ai_anthropic_version,
     ai_api_key,
@@ -14,6 +15,7 @@ from ai_slurm.config import (
     ai_max_tokens,
     ai_model,
     ai_provider,
+    ai_request_retries,
     ai_response_format,
     ai_temperature,
     ai_timeout_seconds,
@@ -27,9 +29,10 @@ _CONFIG_DEFAULT = object()
 
 
 class ModelRequestError(RuntimeError):
-    def __init__(self, message: str, *, retryable: bool):
+    def __init__(self, message: str, *, retryable: bool, retry_same_model: bool = False):
         super().__init__(message)
         self.retryable = retryable
+        self.retry_same_model = retry_same_model
 
 
 def _endpoint(base_url: str, suffix: str) -> str:
@@ -71,6 +74,7 @@ class ModelClient:
         fallback_models: list[str] | None = None,
         anthropic_version: str | None = None,
         timeout: int | None = None,
+        request_retries: int | None = None,
         urlopen: Callable | None = None,
     ):
         self.provider = (provider or ai_provider()).strip().lower()
@@ -98,21 +102,30 @@ class ModelClient:
         self.fallback_models = ai_fallback_models() if fallback_models is None else fallback_models
         self.anthropic_version = anthropic_version or ai_anthropic_version()
         self.timeout = ai_timeout_seconds() if timeout is None else timeout
+        self.request_retries = ai_request_retries() if request_retries is None else max(0, request_retries)
         self.urlopen = urlopen or urllib.request.urlopen
         self.last_model: str | None = None
 
     def chat_json(self, messages: list[dict]) -> str:
         errors = []
         for model in self._candidate_models():
-            try:
-                content = self._chat_json_once(messages, model=model)
-            except ModelRequestError as exc:
-                errors.append(f"{model}: {exc}")
-                if not exc.retryable:
-                    raise
-                continue
-            self.last_model = model
-            return content
+            for attempt in range(self.request_retries + 1):
+                try:
+                    content = self._chat_json_once(messages, model=model)
+                except ModelRequestError as exc:
+                    if not exc.retryable:
+                        raise
+                    if exc.retry_same_model and attempt < self.request_retries:
+                        continue
+                    errors.append(f"{model}: {exc}")
+                    break
+                try:
+                    parse_json_object(content, error_label="AI model response")
+                except ValueError as exc:
+                    errors.append(f"{model}: {exc}")
+                    break
+                self.last_model = model
+                return content
         detail = " | ".join(errors) if errors else "no models configured"
         raise RuntimeError(f"AI model request failed for all configured models: {detail}")
 
@@ -138,7 +151,11 @@ class ModelClient:
             retryable = exc.code in {408, 409, 425, 429} or exc.code >= 500
             raise ModelRequestError(f"AI model request failed: HTTP {exc.code}: {detail}", retryable=retryable) from exc
         except urllib.error.URLError as exc:
-            raise ModelRequestError(f"AI model request failed: {exc.reason}", retryable=True) from exc
+            raise ModelRequestError(
+                f"AI model request failed: {exc.reason}",
+                retryable=True,
+                retry_same_model=True,
+            ) from exc
         except TimeoutError as exc:
             raise ModelRequestError(f"AI model request timed out: {exc}", retryable=True) from exc
 

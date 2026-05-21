@@ -150,6 +150,28 @@ def test_ai_semantic_parser_rejects_malformed_json():
         parse_ai_analysis_json("{not json")
 
 
+def test_ai_semantic_parser_accepts_fenced_json():
+    from ai_slurm.notify.semantic import parse_ai_analysis_json
+
+    parsed = parse_ai_analysis_json(
+        "```json\n"
+        "{"
+        "\"semantic_status\":\"normal\","
+        "\"failure_category\":\"NONE\","
+        "\"confidence\":0.8,"
+        "\"short_summary\":\"ok\","
+        "\"evidence\":[],"
+        "\"resource_notes\":[],"
+        "\"recommended_notification\":\"batch\","
+        "\"suggested_next_steps\":[]"
+        "}\n"
+        "```"
+    )
+
+    assert parsed["semantic_status"] == "normal"
+    assert parsed["failure_category"] == "NONE"
+
+
 def test_ai_semantic_analysis_does_not_override_hard_failure(isolated_home, monkeypatch):
     from ai_slurm.db import connect, init_db
     from ai_slurm.notify.analysis import analyze_job

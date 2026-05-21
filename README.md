@@ -57,8 +57,8 @@ api_key_env = "DEEPSEEK_API_KEY"
 base_url = "https://api.deepseek.com"
 model = "deepseek-v4-pro"
 max_tokens = "512"
-response_format = "json_object"
 auto_summary = "true"
+request_retries = "1"
 
 [notification]
 enabled = "true"

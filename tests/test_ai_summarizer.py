@@ -76,3 +76,17 @@ def test_summarize_completion_writes_completion_summary(isolated_home):
 
     assert json.loads(row[0])["failure_category"] == "RUNTIME_ERROR"
     assert event[0] == "AI_COMPLETION_SUMMARY_CREATED"
+
+
+def test_summary_parser_accepts_fenced_json():
+    from ai_slurm.ai.summarize import parse_summary_json
+
+    parsed = parse_summary_json(
+        "Here is the JSON:\n"
+        "```json\n"
+        "{\"job_id\":\"123456\",\"one_line_summary\":\"ok\"}\n"
+        "```\n"
+    )
+
+    assert parsed["job_id"] == "123456"
+    assert parsed["one_line_summary"] == "ok"

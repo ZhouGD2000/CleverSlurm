@@ -63,9 +63,9 @@ api_key_env = "DEEPSEEK_API_KEY"
 base_url = "https://api.deepseek.com"
 model = "deepseek-v4-pro"
 max_tokens = "512"
-response_format = "json_object"
 auto_summary = "true"
 timeout_seconds = "30"
+request_retries = "1"
 fallback_models = "deepseek-chat"
 ```
 
@@ -84,6 +84,8 @@ base_url = "https://api.kimi.com/coding/v1"
 model = "kimi-for-coding"
 max_tokens = "512"
 ```
+
+Some Kimi Code API keys are accepted by the Anthropic-compatible endpoint but rejected by the OpenAI-compatible endpoint with an HTTP 403 provider-policy error. Use the Anthropic-compatible form below unless your Kimi account explicitly enables the OpenAI-compatible path for that key.
 
 ```toml
 [ai]
@@ -110,7 +112,16 @@ max_tokens = "512"
 extra_body_json = "{\"thinking\":{\"type\":\"enabled\"},\"reasoning_effort\":\"high\"}"
 ```
 
-Set `response_format = "none"` if an OpenAI-compatible endpoint rejects `response_format`.
+CleverSlurm does not send `response_format` by default because provider support differs, and some models can become slow or fail when JSON mode is forced. The prompts still ask for one JSON object, and CleverSlurm extracts that object even when a provider wraps it in Markdown fences or short surrounding text.
+
+For an OpenAI-compatible endpoint that benefits from JSON mode, enable it explicitly:
+
+```toml
+[ai]
+response_format = "json_object"
+```
+
+Set `response_format = "none"` to force the field off even when an environment override or copied config would otherwise set it.
 
 `enable_thinking` is sent only when it is present in config or `AI_SLURM_AI_ENABLE_THINKING` is set. If it is absent, CleverSlurm omits the field entirely because provider support varies. Set it explicitly for OpenAI-compatible models that support that exact field:
 
@@ -132,7 +143,9 @@ or:
 aisummarize 46644 --enable-thinking
 ```
 
-`timeout_seconds` controls the read timeout for each model attempt. `fallback_models` is a comma-separated list of models using the same provider protocol and base URL. The primary `model` is always tried first; fallback models are tried only after retryable failures such as timeouts, HTTP 429, or HTTP 5xx responses. HTTP 400/401 style request or authentication errors are not hidden by fallback.
+`timeout_seconds` controls the read timeout for each model attempt. `request_retries` controls same-model retries for transport-level errors such as a transient SSL EOF; timeouts still move directly to fallback to avoid doubling waits on slow models.
+
+`fallback_models` is a comma-separated list of models using the same provider protocol and base URL. The primary `model` is always tried first; fallback models are tried after retryable failures such as timeouts, HTTP 429, HTTP 5xx responses, empty responses, or model output that does not contain a JSON object. HTTP 400/401 style request or authentication errors are not hidden by fallback.
 
 For a SiliconFlow Qwen setup where `Qwen/Qwen3.5-4B` is the preferred model but may occasionally not return promptly, keep it as the primary model and add a same-provider fallback:
 
@@ -144,6 +157,7 @@ model = "Qwen/Qwen3.5-4B"
 fallback_models = "Qwen/Qwen2.5-7B-Instruct"
 timeout_seconds = "12"
 enable_thinking = "false"
+response_format = "none"
 ```
 
 The same AI configuration is used by:

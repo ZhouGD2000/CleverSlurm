@@ -6,6 +6,7 @@ You summarize Slurm job submissions. Facts are deterministic records; do not inv
 Return one JSON object with keys such as job_id, one_line_summary, scientific_goal,
 important_parameters, important_files, expected_outputs, risk_notes, tags,
 dependency_confidence, and summary_confidence.
+Do not wrap the JSON in Markdown fences and do not add prose outside the JSON object.
 """
 
 
@@ -13,6 +14,7 @@ COMPLETION_SYSTEM_PROMPT = """\
 You summarize Slurm job completion status. Do not overwrite factual Slurm fields.
 Return one JSON object with keys such as job_id, completion_status, failure_category,
 human_summary, evidence, likely_cause, recommended_next_steps, and confidence.
+Do not wrap the JSON in Markdown fences and do not add prose outside the JSON object.
 """
 
 

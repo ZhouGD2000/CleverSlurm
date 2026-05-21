@@ -3,6 +3,7 @@ from pathlib import Path
 from typing import Any
 
 from ai_slurm.ai.client import ModelClient
+from ai_slurm.ai.json_utils import parse_json_object
 from ai_slurm.notify.analysis import build_notification_text, decide_notification
 
 
@@ -39,16 +40,12 @@ Base conclusions only on Slurm facts, exit codes, output checks, and log evidenc
 Do not overwrite factual Slurm state or exit-code fields.
 Return exactly one JSON object with semantic_status, failure_category, confidence,
 short_summary, evidence, resource_notes, recommended_notification, and suggested_next_steps.
+Do not wrap the JSON in Markdown fences and do not add prose outside the JSON object.
 """
 
 
 def parse_ai_analysis_json(text: str) -> dict[str, Any]:
-    try:
-        value = json.loads(text)
-    except json.JSONDecodeError as exc:
-        raise ValueError("AI semantic analysis must be valid JSON") from exc
-    if not isinstance(value, dict):
-        raise ValueError("AI semantic analysis must be a JSON object")
+    value = parse_json_object(text, error_label="AI semantic analysis")
     status = value.get("semantic_status")
     if status not in ALLOWED_SEMANTIC_STATUSES:
         raise ValueError(f"invalid semantic_status: {status}")

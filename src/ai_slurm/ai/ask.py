@@ -10,6 +10,7 @@ You answer questions about Slurm jobs using only the provided SQLite-derived fac
 Do not invent jobs, paths, states, exit codes, or conclusions that are not supported by the facts.
 Answer in the same language as the user's question. When useful, group jobs by status or purpose.
 Return one JSON object with an "answer" string.
+Do not wrap the JSON in Markdown fences and do not add prose outside the JSON object.
 """
 
 
