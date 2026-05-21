@@ -14,13 +14,13 @@ def test_runtime_wrapper_writes_command_log_and_execs_real_program(tmp_path):
     log_dir = tmp_path / "runtime"
     env = os.environ.copy()
     env.update({
-        "AI_SLURM_LOG_DIR": str(log_dir),
-        "AI_SLURM_JOB_ID": "123456",
-        "AI_REAL_JULIA": str(real_julia),
+        "CSLURM_LOG_DIR": str(log_dir),
+        "CSLURM_JOB_ID": "123456",
+        "CSLURM_REAL_JULIA": str(real_julia),
     })
 
     result = subprocess.run(
-        [sys.executable, "-m", "ai_slurm.runtime.wrapper", "julia", "script.jl", "--U", "4"],
+        [sys.executable, "-m", "cslurm.runtime.wrapper", "julia", "script.jl", "--U", "4"],
         env=env,
         text=True,
         stdout=subprocess.PIPE,

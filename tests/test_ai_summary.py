@@ -1,6 +1,6 @@
 import pytest
 
-from ai_slurm.ai.summarize import parse_summary_json
+from cslurm.ai.summarize import parse_summary_json
 
 
 def test_ai_summary_parser_rejects_malformed_json():

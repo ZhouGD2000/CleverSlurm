@@ -2,7 +2,7 @@
 
 > **For Claude:** REQUIRED SUB-SKILL: Use superpowers:executing-plans to implement this plan task-by-task.
 
-**Goal:** Build a minimal deterministic AI-Slurm core that can be tested locally with fake Slurm commands.
+**Goal:** Build a minimal deterministic CleverSlurm core that can be tested locally with fake Slurm commands.
 
 **Architecture:** Use a small Python package with an injectable command runner/config layer. CLI entrypoints call fake or real Slurm commands through configured paths, persist facts in SQLite, and expose basic query commands.
 
@@ -10,16 +10,16 @@
 
 ---
 
-### Task 1: Test aisbatch with fake sbatch
+### Task 1: Test csbatch with fake sbatch
 
 **Files:**
-- Create: `tests/test_aisbatch.py`
+- Create: `tests/test_csbatch.py`
 - Create: `tests/conftest.py`
-- Create: `ai_slurm/cli/aisbatch.py`
+- Create: `cslurm/cli/csbatch.py`
 
 **Steps:**
 1. Write a pytest that creates a fake `sbatch` returning `123456`, submits a temporary `.slurm` file, and asserts the DB row and copied scripts exist.
-2. Run the test and verify it fails because `ai_slurm` does not exist.
+2. Run the test and verify it fails because `cslurm` does not exist.
 3. Implement minimal config, DB schema, Slurm command runner, and `submit_batch`.
 4. Run the test and verify it passes.
 
@@ -27,7 +27,7 @@
 
 **Files:**
 - Create: `tests/test_tracker.py`
-- Create: `ai_slurm/slurm/tracker.py`
+- Create: `cslurm/slurm/tracker.py`
 
 **Steps:**
 1. Write a pytest that seeds a job, points `sacct` at a fake command, runs tracker once, and asserts state/exit code update plus `STATE_CHANGED` event.
@@ -35,11 +35,11 @@
 3. Implement minimal `track_once`.
 4. Run the test and verify it passes.
 
-### Task 3: Test aiscancel with fake scancel
+### Task 3: Test cscancel with fake scancel
 
 **Files:**
-- Create: `tests/test_aiscancel.py`
-- Create: `ai_slurm/cli/aiscancel.py`
+- Create: `tests/test_cscancel.py`
+- Create: `cslurm/cli/cscancel.py`
 
 **Steps:**
 1. Write a pytest that invokes cancel with a note and asserts a `CANCEL_REQUESTED` event.
@@ -47,11 +47,11 @@
 3. Implement minimal cancel wrapper.
 4. Run the test and verify it passes.
 
-### Task 4: Test aijobs show
+### Task 4: Test cjobs show
 
 **Files:**
-- Create: `tests/test_aijobs.py`
-- Create: `ai_slurm/cli/aijobs.py`
+- Create: `tests/test_cjobs.py`
+- Create: `cslurm/cli/cjobs.py`
 
 **Steps:**
 1. Write a pytest that inserts job metadata and asserts `show_job` returns readable text.

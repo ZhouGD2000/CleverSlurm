@@ -38,7 +38,7 @@ In Feishu:
 2. Open chat settings.
 3. Open the bot management page, usually named `群机器人` or `Bots`.
 4. Add a custom bot.
-5. Give it a recognizable name, for example `AI-Slurm`.
+5. Give it a recognizable name, for example `CleverSlurm`.
 6. Copy the generated webhook URL.
 
 The webhook usually looks like:
@@ -63,20 +63,20 @@ least one in real deployments.
 
 Keyword validation:
 
-- Add `AI-Slurm` as an allowed keyword.
-- CleverSlurm generated card titles include `AI-Slurm`, so keyword validation can
+- Add `CleverSlurm` as an allowed keyword.
+- CleverSlurm generated card titles include `CleverSlurm`, so keyword validation can
   pass without changing code.
 
 Signature validation:
 
 - Enable signing in the custom bot settings.
 - Copy the signing secret.
-- Put the secret in `AI_SLURM_FEISHU_SECRET`.
+- Put the secret in `CSLURM_FEISHU_SECRET`.
 - CleverSlurm will generate the timestamp/signature fields for each request.
 
 IP allowlist:
 
-- Add the public egress IP of the host that runs `aitrack` or `ainotify`.
+- Add the public egress IP of the host that runs `ctrack` or `cnotify`.
 - This can be awkward on laptops or NATed clusters where the egress IP changes.
 
 ## CleverSlurm Configuration
@@ -84,13 +84,13 @@ IP allowlist:
 Set secrets through environment variables:
 
 ```bash
-export AI_SLURM_FEISHU_WEBHOOK="https://open.feishu.cn/open-apis/bot/v2/hook/..."
-export AI_SLURM_FEISHU_SECRET="..."
+export CSLURM_FEISHU_WEBHOOK="https://open.feishu.cn/open-apis/bot/v2/hook/..."
+export CSLURM_FEISHU_SECRET="..."
 ```
 
-If the bot does not use signature validation, omit `AI_SLURM_FEISHU_SECRET`.
+If the bot does not use signature validation, omit `CSLURM_FEISHU_SECRET`.
 
-Optional `~/.ai-slurm/config.toml`:
+Optional `~/.cslurm/config.toml`:
 
 ```toml
 [notification]
@@ -99,8 +99,8 @@ auto_dispatch = "true"
 ai_analysis = "false"
 
 [notification.feishu]
-webhook_url_env = "AI_SLURM_FEISHU_WEBHOOK"
-secret_env = "AI_SLURM_FEISHU_SECRET"
+webhook_url_env = "CSLURM_FEISHU_WEBHOOK"
+secret_env = "CSLURM_FEISHU_SECRET"
 message_format = "card"
 batch_window_minutes = "30"
 ```
@@ -121,9 +121,9 @@ those fields for compatibility, but `webhook_url` and `secret` are clearer.
 Useful environment overrides:
 
 ```bash
-export AI_SLURM_NOTIFICATION_ENABLED=true
-export AI_SLURM_NOTIFICATION_AUTO_DISPATCH=true
-export AI_SLURM_NOTIFICATION_AI_ANALYSIS=false
+export CSLURM_NOTIFICATION_ENABLED=true
+export CSLURM_NOTIFICATION_AUTO_DISPATCH=true
+export CSLURM_NOTIFICATION_AI_ANALYSIS=false
 ```
 
 ## Test Delivery
@@ -131,25 +131,25 @@ export AI_SLURM_NOTIFICATION_AI_ANALYSIS=false
 After a tracked job reaches a terminal state, inspect queued notifications:
 
 ```bash
-aijobs notifications
-ainotify pending
+cjobs notifications
+cnotify pending
 ```
 
 Send pending immediate notifications and any due grouped notifications:
 
 ```bash
-ainotify dispatch --mode all
+cnotify dispatch --mode all
 ```
 
 Force grouped batch/digest summaries without waiting for `batch_window_minutes`:
 
 ```bash
-ainotify dispatch --mode batch --force
-ainotify dispatch --mode digest --force
+cnotify dispatch --mode batch --force
+cnotify dispatch --mode digest --force
 ```
 
-`aitrack` normally dispatches automatically after it records terminal job states.
-Manual `ainotify dispatch` is mainly for testing or retrying.
+`ctrack` normally dispatches automatically after it records terminal job states.
+Manual `cnotify dispatch` is mainly for testing or retrying.
 
 ## Personal Message Backend Requirements
 
@@ -158,8 +158,8 @@ will need different fields from the custom webhook backend:
 
 ```toml
 [notification.feishu_app]
-app_id_env = "AI_SLURM_FEISHU_APP_ID"
-app_secret_env = "AI_SLURM_FEISHU_APP_SECRET"
+app_id_env = "CSLURM_FEISHU_APP_ID"
+app_secret_env = "CSLURM_FEISHU_APP_SECRET"
 receive_id_type = "open_id"
 receive_id = "ou_..."
 ```
@@ -178,13 +178,13 @@ That is intentionally separate from the current webhook path.
 
 If messages are not delivered:
 
-- Check that `AI_SLURM_FEISHU_WEBHOOK` is exported in the same shell or service
-  environment that runs `aitrack` or `ainotify`.
-- If signing is enabled, check `AI_SLURM_FEISHU_SECRET`.
-- If keyword validation is enabled, check that `AI-Slurm` is allowed.
+- Check that `CSLURM_FEISHU_WEBHOOK` is exported in the same shell or service
+  environment that runs `ctrack` or `cnotify`.
+- If signing is enabled, check `CSLURM_FEISHU_SECRET`.
+- If keyword validation is enabled, check that `CleverSlurm` is allowed.
 - If IP allowlist is enabled, check the sender's actual public egress IP.
-- Check `aijobs notifications` for pending or failed rows.
-- Run `ainotify dispatch --mode all` manually and inspect the error output.
+- Check `cjobs notifications` for pending or failed rows.
+- Run `cnotify dispatch --mode all` manually and inspect the error output.
 
 Official references:
 

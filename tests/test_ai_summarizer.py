@@ -1,8 +1,8 @@
 import json
 import sqlite3
 
-from ai_slurm.ai.summarize import summarize_completion, summarize_submission
-from ai_slurm.db import connect, init_db
+from cslurm.ai.summarize import summarize_completion, summarize_submission
+from cslurm.db import connect, init_db
 
 
 class FakeClient:
@@ -35,7 +35,7 @@ def test_summarize_submission_writes_structured_json_and_event(isolated_home):
         init_db(conn)
         conn.execute(
             "insert into jobs (job_id, submitted_at, submit_cwd, command, job_name, state, created_at, updated_at) "
-            "values ('123456', 't', '/work', 'aisbatch job.slurm', 'dmft', 'UNKNOWN', 't', 't')"
+            "values ('123456', 't', '/work', 'csbatch job.slurm', 'dmft', 'UNKNOWN', 't', 't')"
         )
         conn.execute(
             "insert into job_files (job_id, path, relpath, size, role, source, copied, confidence) "
@@ -54,7 +54,7 @@ def test_summarize_submission_writes_structured_json_and_event(isolated_home):
     summary = summarize_submission("123456", client=fake)
 
     assert summary["one_line_summary"] == "Run DMFT test."
-    assert "aisbatch job.slurm" in fake.messages[1]["content"]
+    assert "csbatch job.slurm" in fake.messages[1]["content"]
     assert "run.jl" in fake.messages[1]["content"]
 
     with sqlite3.connect(isolated_home / "db.sqlite") as conn:
@@ -70,7 +70,7 @@ def test_summarize_completion_writes_completion_summary(isolated_home):
         init_db(conn)
         conn.execute(
             "insert into jobs (job_id, submitted_at, submit_cwd, command, state, exit_code, elapsed, max_rss, created_at, updated_at) "
-            "values ('123456', 't', '/work', 'aisbatch job.slurm', 'FAILED', '1:0', '00:00:10', '2G', 't', 't')"
+            "values ('123456', 't', '/work', 'csbatch job.slurm', 'FAILED', '1:0', '00:00:10', '2G', 't', 't')"
         )
 
     fake = FakeClient(
@@ -94,7 +94,7 @@ def test_summarize_completion_writes_completion_summary(isolated_home):
 
 
 def test_summary_parser_accepts_fenced_json():
-    from ai_slurm.ai.summarize import parse_summary_json
+    from cslurm.ai.summarize import parse_summary_json
 
     parsed = parse_summary_json(
         "Here is the JSON:\n"
@@ -112,7 +112,7 @@ def test_summarize_submission_does_not_send_ai_failure_events(isolated_home):
         init_db(conn)
         conn.execute(
             "insert into jobs (job_id, submitted_at, submit_cwd, command, state, created_at, updated_at) "
-            "values ('123456', 't', '/work', 'aisbatch job.slurm', 'UNKNOWN', 't', 't')"
+            "values ('123456', 't', '/work', 'csbatch job.slurm', 'UNKNOWN', 't', 't')"
         )
         conn.execute(
             "insert into job_events (job_id, event_time, event_type, raw_output) "
@@ -138,7 +138,7 @@ def test_summarize_submission_falls_back_to_text_summary(isolated_home):
         init_db(conn)
         conn.execute(
             "insert into jobs (job_id, submitted_at, submit_cwd, command, state, created_at, updated_at) "
-            "values ('123456', 't', '/work', 'aisbatch job.slurm', 'UNKNOWN', 't', 't')"
+            "values ('123456', 't', '/work', 'csbatch job.slurm', 'UNKNOWN', 't', 't')"
         )
 
     fake = FallbackClient("Plain AI summary.")

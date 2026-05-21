@@ -20,17 +20,17 @@ class FakeResponse:
 
 
 def test_feishu_signature_matches_lark_custom_bot_algorithm():
-    from ai_slurm.notify.feishu import build_feishu_sign
+    from cslurm.notify.feishu import build_feishu_sign
 
     assert build_feishu_sign("test-secret", 1700000000) == "mbm4Y4oluIPQ00qlBIhX8vAZ0EKv3nw0LuTb91jPL84="
 
 
 def test_immediate_notification_is_sent_and_marked_sent(isolated_home, monkeypatch):
-    from ai_slurm.db import connect, init_db
-    from ai_slurm.notify.dispatcher import enqueue_job_notification
-    from ai_slurm.notify.feishu import dispatch_pending
+    from cslurm.db import connect, init_db
+    from cslurm.notify.dispatcher import enqueue_job_notification
+    from cslurm.notify.feishu import dispatch_pending
 
-    monkeypatch.setenv("AI_SLURM_FEISHU_WEBHOOK", "https://open.feishu.cn/open-apis/bot/v2/hook/test")
+    monkeypatch.setenv("CSLURM_FEISHU_WEBHOOK", "https://open.feishu.cn/open-apis/bot/v2/hook/test")
     sent = []
 
     def fake_urlopen(request, timeout):
@@ -44,7 +44,7 @@ def test_immediate_notification_is_sent_and_marked_sent(isolated_home, monkeypat
         "failure_category": "FAILED",
         "severity": "high",
         "recommended_notification": "immediate",
-        "title": "[AI-Slurm][FAILED] Job 123456",
+        "title": "[CleverSlurm][FAILED] Job 123456",
         "body": "State: FAILED",
     }
     with connect() as conn:
@@ -64,11 +64,11 @@ def test_immediate_notification_is_sent_and_marked_sent(isolated_home, monkeypat
 
 
 def test_duplicate_notifications_do_not_send_twice(isolated_home, monkeypatch):
-    from ai_slurm.db import connect, init_db
-    from ai_slurm.notify.dispatcher import enqueue_job_notification
-    from ai_slurm.notify.feishu import dispatch_pending
+    from cslurm.db import connect, init_db
+    from cslurm.notify.dispatcher import enqueue_job_notification
+    from cslurm.notify.feishu import dispatch_pending
 
-    monkeypatch.setenv("AI_SLURM_FEISHU_WEBHOOK", "https://open.feishu.cn/open-apis/bot/v2/hook/test")
+    monkeypatch.setenv("CSLURM_FEISHU_WEBHOOK", "https://open.feishu.cn/open-apis/bot/v2/hook/test")
     sent = []
 
     def fake_urlopen(request, timeout):
@@ -101,11 +101,11 @@ def test_duplicate_notifications_do_not_send_twice(isolated_home, monkeypatch):
 
 
 def test_batch_notifications_send_one_group_summary(isolated_home, monkeypatch):
-    from ai_slurm.db import connect, init_db
-    from ai_slurm.notify.dispatcher import enqueue_job_notification
-    from ai_slurm.notify.feishu import dispatch_pending
+    from cslurm.db import connect, init_db
+    from cslurm.notify.dispatcher import enqueue_job_notification
+    from cslurm.notify.feishu import dispatch_pending
 
-    monkeypatch.setenv("AI_SLURM_FEISHU_WEBHOOK", "https://open.feishu.cn/open-apis/bot/v2/hook/test")
+    monkeypatch.setenv("CSLURM_FEISHU_WEBHOOK", "https://open.feishu.cn/open-apis/bot/v2/hook/test")
     sent = []
 
     def fake_urlopen(request, timeout):
@@ -117,7 +117,7 @@ def test_batch_notifications_send_one_group_summary(isolated_home, monkeypatch):
         for job_id in ["101", "102", "103"]:
             conn.execute(
                 "insert into jobs (job_id, state, exit_code, job_name, command, created_at, updated_at) "
-                "values (?, 'COMPLETED', '0:0', ?, 'aisbatch job.slurm', 't', 't')",
+                "values (?, 'COMPLETED', '0:0', ?, 'csbatch job.slurm', 't', 't')",
                 (job_id, f"job-{job_id}"),
             )
             enqueue_job_notification(
@@ -130,7 +130,7 @@ def test_batch_notifications_send_one_group_summary(isolated_home, monkeypatch):
                     "failure_category": "NONE",
                     "severity": "normal",
                     "recommended_notification": "batch",
-                    "title": f"[AI-Slurm][NONE] Job {job_id}",
+                    "title": f"[CleverSlurm][NONE] Job {job_id}",
                     "body": f"State: COMPLETED\nJob: {job_id}",
                 },
             )
@@ -155,11 +155,11 @@ def test_batch_notifications_send_one_group_summary(isolated_home, monkeypatch):
 
 
 def test_digest_notifications_send_one_digest_summary(isolated_home, monkeypatch):
-    from ai_slurm.db import connect, init_db
-    from ai_slurm.notify.dispatcher import enqueue_job_notification
-    from ai_slurm.notify.feishu import dispatch_pending
+    from cslurm.db import connect, init_db
+    from cslurm.notify.dispatcher import enqueue_job_notification
+    from cslurm.notify.feishu import dispatch_pending
 
-    monkeypatch.setenv("AI_SLURM_FEISHU_WEBHOOK", "https://open.feishu.cn/open-apis/bot/v2/hook/test")
+    monkeypatch.setenv("CSLURM_FEISHU_WEBHOOK", "https://open.feishu.cn/open-apis/bot/v2/hook/test")
     sent = []
 
     def fake_urlopen(request, timeout):
@@ -177,7 +177,7 @@ def test_digest_notifications_send_one_digest_summary(isolated_home, monkeypatch
                 "failure_category": "USER_CANCELLED",
                 "severity": "low",
                 "recommended_notification": "digest",
-                "title": "[AI-Slurm][USER_CANCELLED] Job 201",
+                "title": "[CleverSlurm][USER_CANCELLED] Job 201",
                 "body": "State: CANCELLED",
             },
         )
@@ -191,11 +191,11 @@ def test_digest_notifications_send_one_digest_summary(isolated_home, monkeypatch
 
     assert notification_status == "batched"
     assert batch == ("digest", "sent")
-    assert "[AI-Slurm][DIGEST]" in sent[0]["card"]["header"]["title"]["content"]
+    assert "[CleverSlurm][DIGEST]" in sent[0]["card"]["header"]["title"]["content"]
 
 
-def test_ainotify_dispatch_accepts_batch_mode(monkeypatch, capsys):
-    from ai_slurm.cli.ainotify import main
+def test_cnotify_dispatch_accepts_batch_mode(monkeypatch, capsys):
+    from cslurm.cli.cnotify import main
 
     calls = []
 
@@ -203,8 +203,8 @@ def test_ainotify_dispatch_accepts_batch_mode(monkeypatch, capsys):
         calls.append((limit, mode, force))
         return 2
 
-    monkeypatch.setattr("ai_slurm.cli.ainotify.dispatch_pending", fake_dispatch_pending)
-    monkeypatch.setattr("sys.argv", ["ainotify", "dispatch", "--mode", "batch", "--force", "-n", "5"])
+    monkeypatch.setattr("cslurm.cli.cnotify.dispatch_pending", fake_dispatch_pending)
+    monkeypatch.setattr("sys.argv", ["cnotify", "dispatch", "--mode", "batch", "--force", "-n", "5"])
 
     main()
 
@@ -213,18 +213,18 @@ def test_ainotify_dispatch_accepts_batch_mode(monkeypatch, capsys):
 
 
 def test_tracker_flushes_due_batch_notifications_without_new_jobs(isolated_home, monkeypatch):
-    from ai_slurm.db import connect, init_db
-    from ai_slurm.slurm.tracker import track_once
+    from cslurm.db import connect, init_db
+    from cslurm.slurm.tracker import track_once
 
-    monkeypatch.setenv("AI_SLURM_FEISHU_WEBHOOK", "https://open.feishu.cn/open-apis/bot/v2/hook/test")
-    monkeypatch.setenv("AI_SLURM_NOTIFICATION_BATCH_WINDOW_MINUTES", "30")
+    monkeypatch.setenv("CSLURM_FEISHU_WEBHOOK", "https://open.feishu.cn/open-apis/bot/v2/hook/test")
+    monkeypatch.setenv("CSLURM_NOTIFICATION_BATCH_WINDOW_MINUTES", "30")
     sent = []
 
     def fake_urlopen(request, timeout):
         sent.append(json.loads(request.data.decode()))
         return FakeResponse({"code": 0, "msg": "ok"})
 
-    monkeypatch.setattr("ai_slurm.notify.feishu.DEFAULT_URLOPEN", fake_urlopen)
+    monkeypatch.setattr("cslurm.notify.feishu.DEFAULT_URLOPEN", fake_urlopen)
     with connect() as conn:
         init_db(conn)
         conn.execute(
@@ -234,7 +234,7 @@ def test_tracker_flushes_due_batch_notifications_without_new_jobs(isolated_home,
               title, body, payload_json, status, dedupe_key
             ) values (
               '301', 'daily', '2000-01-01T00:00:00+00:00', 'normal', 'NONE', 'feishu', 'batch',
-              '[AI-Slurm][NONE] Job 301', 'State: COMPLETED',
+              '[CleverSlurm][NONE] Job 301', 'State: COMPLETED',
               '{"analysis":{"semantic_status":"normal"}}', 'pending', 'job:301:normal:NONE'
             )
             """
@@ -251,17 +251,17 @@ def test_tracker_flushes_due_batch_notifications_without_new_jobs(isolated_home,
 
 
 def test_tracker_flushes_due_batch_notifications_when_jobs_are_running(isolated_home, fake_bin, monkeypatch):
-    from ai_slurm.db import connect, init_db
-    from ai_slurm.slurm.tracker import track_once
+    from cslurm.db import connect, init_db
+    from cslurm.slurm.tracker import track_once
 
-    monkeypatch.setenv("AI_SLURM_FEISHU_WEBHOOK", "https://open.feishu.cn/open-apis/bot/v2/hook/test")
+    monkeypatch.setenv("CSLURM_FEISHU_WEBHOOK", "https://open.feishu.cn/open-apis/bot/v2/hook/test")
     sent = []
 
     def fake_urlopen(request, timeout):
         sent.append(json.loads(request.data.decode()))
         return FakeResponse({"code": 0, "msg": "ok"})
 
-    monkeypatch.setattr("ai_slurm.notify.feishu.DEFAULT_URLOPEN", fake_urlopen)
+    monkeypatch.setattr("cslurm.notify.feishu.DEFAULT_URLOPEN", fake_urlopen)
     write_executable(
         fake_bin / "sacct",
         "#!/bin/sh\nprintf 'JobID|State|ExitCode|DerivedExitCode|Elapsed|MaxRSS|NodeList\\n999|RUNNING|0:0|0:0|00:01:00||node001\\n'\n",
@@ -278,7 +278,7 @@ def test_tracker_flushes_due_batch_notifications_when_jobs_are_running(isolated_
               title, body, payload_json, status, dedupe_key
             ) values (
               '302', 'daily', '2000-01-01T00:00:00+00:00', 'normal', 'NONE', 'feishu', 'batch',
-              '[AI-Slurm][NONE] Job 302', 'State: COMPLETED',
+              '[CleverSlurm][NONE] Job 302', 'State: COMPLETED',
               '{"analysis":{"semantic_status":"normal"}}', 'pending', 'job:302:normal:NONE'
             )
             """
@@ -297,7 +297,7 @@ def test_tracker_flushes_due_batch_notifications_when_jobs_are_running(isolated_
 
 
 def test_feishu_dispatcher_retries_transient_http_failures():
-    from ai_slurm.notify.feishu import send_payload
+    from cslurm.notify.feishu import send_payload
 
     calls = []
 
@@ -309,7 +309,7 @@ def test_feishu_dispatcher_retries_transient_http_failures():
 
     send_payload(
         "https://open.feishu.cn/open-apis/bot/v2/hook/test",
-        {"msg_type": "text", "content": {"text": "AI-Slurm"}},
+        {"msg_type": "text", "content": {"text": "CleverSlurm"}},
         urlopen=flaky_urlopen,
         backoff_seconds=0,
     )
@@ -318,17 +318,17 @@ def test_feishu_dispatcher_retries_transient_http_failures():
 
 
 def test_tracker_creates_and_dispatches_failed_notification(isolated_home, fake_bin, monkeypatch):
-    from ai_slurm.db import connect, init_db
-    from ai_slurm.slurm.tracker import track_once
+    from cslurm.db import connect, init_db
+    from cslurm.slurm.tracker import track_once
 
-    monkeypatch.setenv("AI_SLURM_FEISHU_WEBHOOK", "https://open.feishu.cn/open-apis/bot/v2/hook/test")
+    monkeypatch.setenv("CSLURM_FEISHU_WEBHOOK", "https://open.feishu.cn/open-apis/bot/v2/hook/test")
     sent = []
 
     def fake_urlopen(request, timeout):
         sent.append(json.loads(request.data.decode()))
         return FakeResponse({"code": 0, "msg": "ok"})
 
-    monkeypatch.setattr("ai_slurm.notify.feishu.DEFAULT_URLOPEN", fake_urlopen)
+    monkeypatch.setattr("cslurm.notify.feishu.DEFAULT_URLOPEN", fake_urlopen)
     write_executable(
         fake_bin / "sacct",
         "#!/bin/sh\nprintf 'JobID|State|ExitCode|DerivedExitCode|Elapsed|MaxRSS|NodeList\\n123456|FAILED|1:0|1:0|00:00:03|12M|node001\\n'\n",
@@ -338,7 +338,7 @@ def test_tracker_creates_and_dispatches_failed_notification(isolated_home, fake_
         init_db(conn)
         conn.execute(
             "insert into jobs (job_id, submitted_at, submit_cwd, command, state, created_at, updated_at) "
-            "values ('123456', 't', '/tmp', 'aisbatch job.slurm', 'UNKNOWN', 't', 't')"
+            "values ('123456', 't', '/tmp', 'csbatch job.slurm', 'UNKNOWN', 't', 't')"
         )
 
     track_once()

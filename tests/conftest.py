@@ -18,11 +18,11 @@ def source_tree_on_pythonpath(monkeypatch):
 @pytest.fixture
 def isolated_home(tmp_path, monkeypatch):
     home = tmp_path / "home"
-    root = home / ".ai-slurm"
+    root = home / ".cslurm"
     home.mkdir()
     root.mkdir()
     monkeypatch.setenv("HOME", str(home))
-    monkeypatch.setenv("AI_SLURM_ROOT", str(root))
+    monkeypatch.setenv("CSLURM_ROOT", str(root))
     return root
 
 

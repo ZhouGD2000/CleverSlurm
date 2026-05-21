@@ -1,19 +1,19 @@
 # Configuration
 
-CleverSlurm reads configuration from environment variables first, then from `~/.ai-slurm/config.toml`, then from built-in defaults.
+CleverSlurm reads configuration from environment variables first, then from `~/.cslurm/config.toml`, then from built-in defaults.
 
 ## Storage
 
 Default root:
 
 ```text
-~/.ai-slurm
+~/.cslurm
 ```
 
 Override it for tests or isolated deployments:
 
 ```bash
-export AI_SLURM_ROOT=/path/to/ai-slurm-root
+export CSLURM_ROOT=/path/to/cslurm-root
 ```
 
 The root contains:
@@ -32,10 +32,10 @@ By default, commands are resolved from `PATH`.
 Override command paths with environment variables:
 
 ```bash
-export AI_SLURM_SBATCH=/usr/bin/sbatch
-export AI_SLURM_SRUN=/usr/bin/srun
-export AI_SLURM_SACCT=/usr/bin/sacct
-export AI_SLURM_SCANCEL=/usr/bin/scancel
+export CSLURM_SBATCH=/usr/bin/sbatch
+export CSLURM_SRUN=/usr/bin/srun
+export CSLURM_SACCT=/usr/bin/sacct
+export CSLURM_SCANCEL=/usr/bin/scancel
 ```
 
 These overrides are also how tests inject fake Slurm commands.
@@ -46,19 +46,19 @@ Environment variables:
 
 ```bash
 export DEEPSEEK_API_KEY=...
-export AI_SLURM_AI_PROVIDER=openai-compatible
-export AI_SLURM_AI_BASE_URL=https://api.deepseek.com
-export AI_SLURM_AI_MODEL=deepseek-v4-pro
-export AI_SLURM_AI_MAX_TOKENS=512
-export AI_SLURM_AI_TIMEOUT_SECONDS=30
-export AI_SLURM_AI_FALLBACK_MODELS=deepseek-chat
+export CSLURM_AI_FORMAT=openai
+export CSLURM_AI_BASE_URL=https://api.deepseek.com
+export CSLURM_AI_MODEL=deepseek-v4-pro
+export CSLURM_AI_MAX_TOKENS=512
+export CSLURM_AI_TIMEOUT_SECONDS=30
+export CSLURM_AI_FALLBACK_MODELS=deepseek-chat
 ```
 
 Local config file:
 
 ```toml
 [ai]
-provider = "openai-compatible"
+format = "openai"
 api_key_env = "DEEPSEEK_API_KEY"
 base_url = "https://api.deepseek.com"
 model = "deepseek-v4-pro"
@@ -69,16 +69,16 @@ request_retries = "1"
 fallback_models = "deepseek-chat"
 ```
 
-Supported `provider` values:
+Supported `format` values:
 
-- `openai-compatible`: POSTs to `<base_url>/chat/completions`.
-- `anthropic-compatible`: POSTs to `<base_url>/v1/messages`.
+- `openai`: POSTs to `<base_url>/chat/completions`.
+- `anthropic`: POSTs to `<base_url>/v1/messages`.
 
 Examples:
 
 ```toml
 [ai]
-provider = "openai-compatible"
+format = "openai"
 api_key_env = "KIMI_API_KEY"
 base_url = "https://api.kimi.com/coding/v1"
 model = "kimi-for-coding"
@@ -89,7 +89,7 @@ Some Kimi Code API keys are accepted by the Anthropic-compatible endpoint but re
 
 ```toml
 [ai]
-provider = "anthropic-compatible"
+format = "anthropic"
 api_key_env = "KIMI_API_KEY"
 base_url = "https://api.kimi.com/coding/"
 model = "kimi-for-coding"
@@ -98,7 +98,7 @@ max_tokens = "512"
 
 ```toml
 [ai]
-provider = "anthropic-compatible"
+format = "anthropic"
 api_key_env = "DEEPSEEK_API_KEY"
 base_url = "https://api.deepseek.com/anthropic"
 model = "deepseek-v4-pro"
@@ -114,7 +114,7 @@ extra_body_json = "{\"thinking\":{\"type\":\"enabled\"},\"reasoning_effort\":\"h
 
 CleverSlurm does not send `response_format` by default because provider support differs, and some models can become slow or fail when JSON mode is forced. The prompts still ask for one JSON object, and CleverSlurm extracts that object even when a provider wraps it in Markdown fences or short surrounding text.
 
-If a provider returns invalid JSON or times out on a structured response, the AI-facing commands fall back to a shorter natural-language prompt and store the model's text inside a structured local record. This keeps `aisbatch` automatic summaries, `aisummarize`, `aijobs ask`, and notification AI analysis usable on smaller or less JSON-stable models.
+If a provider returns invalid JSON or times out on a structured response, the AI-facing commands fall back to a shorter natural-language prompt and store the model's text inside a structured local record. This keeps `csbatch` automatic summaries, `csummarize`, `cjobs ask`, and notification AI analysis usable on smaller or less JSON-stable models.
 
 For an OpenAI-compatible endpoint that benefits from JSON mode, enable it explicitly:
 
@@ -125,7 +125,7 @@ response_format = "json_object"
 
 Set `response_format = "none"` to force the field off even when an environment override or copied config would otherwise set it.
 
-`enable_thinking` is sent only when it is present in config or `AI_SLURM_AI_ENABLE_THINKING` is set. If it is absent, CleverSlurm omits the field entirely because provider support varies. Set it explicitly for OpenAI-compatible models that support that exact field:
+`enable_thinking` is sent only when it is present in config or `CSLURM_AI_ENABLE_THINKING` is set. If it is absent, CleverSlurm omits the field entirely because provider support varies. Set it explicitly for OpenAI-compatible models that support that exact field:
 
 ```toml
 [ai]
@@ -142,7 +142,7 @@ enable_thinking = "false"
 or:
 
 ```bash
-aisummarize 46644 --enable-thinking
+csummarize 46644 --enable-thinking
 ```
 
 `timeout_seconds` controls the read timeout for each model attempt. `request_retries` controls same-model retries for transport-level errors such as a transient SSL EOF; timeouts still move directly to fallback to avoid doubling waits on slow models.
@@ -153,7 +153,7 @@ For a SiliconFlow Qwen setup where `Qwen/Qwen3.5-4B` is the preferred model but 
 
 ```toml
 [ai]
-provider = "openai-compatible"
+format = "openai"
 base_url = "https://api.siliconflow.cn/v1"
 model = "Qwen/Qwen3.5-4B"
 fallback_models = "Qwen/Qwen2.5-7B-Instruct"
@@ -165,15 +165,15 @@ response_format = "none"
 The same AI configuration is used by:
 
 ```bash
-aijobs ask "最近完成了什么任务？都是些什么工作？"
+cjobs ask "最近完成了什么任务？都是些什么工作？"
 ```
 
-`aijobs ask` builds a JSON context from recent SQLite job records, then asks the configured model to answer from that context only.
+`cjobs ask` builds a JSON context from recent SQLite job records, then asks the configured model to answer from that context only.
 
-`aisbatch` triggers a submission summary automatically after it records a successful submission. If the AI request fails, the job submission still succeeds and an `AI_SUMMARY_FAILED` event is recorded. Disable automatic summaries when needed:
+`csbatch` triggers a submission summary automatically after it records a successful submission. If the AI request fails, the job submission still succeeds and an `AI_SUMMARY_FAILED` event is recorded. Disable automatic summaries when needed:
 
 ```bash
-export AI_SLURM_AI_AUTO_SUMMARY=false
+export CSLURM_AI_AUTO_SUMMARY=false
 ```
 
 or:
@@ -188,8 +188,8 @@ auto_summary = "false"
 Feishu notifications use a Feishu/Lark custom bot webhook. Keep the webhook and signing secret in environment variables:
 
 ```bash
-export AI_SLURM_FEISHU_WEBHOOK="https://open.feishu.cn/open-apis/bot/v2/hook/..."
-export AI_SLURM_FEISHU_SECRET="..."
+export CSLURM_FEISHU_WEBHOOK="https://open.feishu.cn/open-apis/bot/v2/hook/..."
+export CSLURM_FEISHU_SECRET="..."
 ```
 
 This webhook sends to the Feishu chat where the custom bot is installed. It is usually a group notification path, not arbitrary personal direct messaging. Direct one-to-one messages require a separate Feishu app bot backend and are not implemented yet. See [Feishu Setup](feishu_setup.md) for Feishu-side setup steps and the app-bot requirements for personal delivery.
@@ -203,13 +203,13 @@ auto_dispatch = "true"
 ai_analysis = "false"
 
 [notification.feishu]
-webhook_url_env = "AI_SLURM_FEISHU_WEBHOOK"
-secret_env = "AI_SLURM_FEISHU_SECRET"
+webhook_url_env = "CSLURM_FEISHU_WEBHOOK"
+secret_env = "CSLURM_FEISHU_SECRET"
 message_format = "card"
 batch_window_minutes = "30"
 ```
 
-If you choose to store the values directly in `~/.ai-slurm/config.toml`, use:
+If you choose to store the values directly in `~/.cslurm/config.toml`, use:
 
 ```toml
 [notification.feishu]
@@ -219,12 +219,12 @@ secret = "..."
 
 The `*_env` fields are environment variable names. Direct values are supported for convenience, but environment variables are safer for shared repositories and shell histories.
 
-`aitrack` records a `job_analysis` row and a `notifications` row when a job reaches a terminal Slurm state. Hard failures, nonzero `ExitCode`, and nonzero `DerivedExitCode` are immediate notifications. Normal completions and user cancellations are grouped into batch or digest summary cards after `batch_window_minutes`.
+`ctrack` records a `job_analysis` row and a `notifications` row when a job reaches a terminal Slurm state. Hard failures, nonzero `ExitCode`, and nonzero `DerivedExitCode` are immediate notifications. Normal completions and user cancellations are grouped into batch or digest summary cards after `batch_window_minutes`.
 
 AI semantic log analysis is opt-in:
 
 ```bash
-export AI_SLURM_NOTIFICATION_AI_ANALYSIS=true
+export CSLURM_NOTIFICATION_AI_ANALYSIS=true
 ```
 
 When enabled, the AI receives compact log snippets and deterministic facts. Its output may refine semantic status for completed jobs, but it cannot override factual Slurm state or hard-failure classification.
@@ -232,13 +232,13 @@ When enabled, the AI receives compact log snippets and deterministic facts. Its 
 Useful commands:
 
 ```bash
-aijobs notifications
-aijobs notifications 46644
-ainotify pending
-ainotify dispatch
-ainotify dispatch --mode batch --force
-ainotify dispatch --mode digest --force
-ainotify dispatch --mode all
+cjobs notifications
+cjobs notifications 46644
+cnotify pending
+cnotify dispatch
+cnotify dispatch --mode batch --force
+cnotify dispatch --mode digest --force
+cnotify dispatch --mode all
 ```
 
 ## Recommended Permissions
@@ -246,7 +246,7 @@ ainotify dispatch --mode all
 The config may contain an API key, so keep it private:
 
 ```bash
-chmod 600 ~/.ai-slurm/config.toml
+chmod 600 ~/.cslurm/config.toml
 ```
 
 Never commit real API keys.

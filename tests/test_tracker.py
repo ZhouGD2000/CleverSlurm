@@ -4,8 +4,8 @@ from conftest import write_executable
 
 
 def test_tracker_updates_state_from_fake_sacct_and_records_state_change(isolated_home, fake_bin):
-    from ai_slurm.db import connect, init_db
-    from ai_slurm.slurm.tracker import track_once
+    from cslurm.db import connect, init_db
+    from cslurm.slurm.tracker import track_once
 
     write_executable(
         fake_bin / "sacct",
@@ -16,7 +16,7 @@ def test_tracker_updates_state_from_fake_sacct_and_records_state_change(isolated
         init_db(conn)
         conn.execute(
             "insert into jobs (job_id, submitted_at, submit_cwd, command, state, created_at, updated_at) "
-            "values ('123456', 't', '/tmp', 'aisbatch job.slurm', 'UNKNOWN', 't', 't')"
+            "values ('123456', 't', '/tmp', 'csbatch job.slurm', 'UNKNOWN', 't', 't')"
         )
 
     track_once()
@@ -35,8 +35,8 @@ def test_tracker_updates_state_from_fake_sacct_and_records_state_change(isolated
 
 
 def test_tracker_parses_real_sacct_no_header_output(isolated_home, fake_bin):
-    from ai_slurm.db import connect, init_db
-    from ai_slurm.slurm.tracker import track_once
+    from cslurm.db import connect, init_db
+    from cslurm.slurm.tracker import track_once
 
     write_executable(
         fake_bin / "sacct",
@@ -47,7 +47,7 @@ def test_tracker_parses_real_sacct_no_header_output(isolated_home, fake_bin):
         init_db(conn)
         conn.execute(
             "insert into jobs (job_id, submitted_at, submit_cwd, command, state, created_at, updated_at) "
-            "values ('123456', 't', '/tmp', 'aisbatch job.slurm', 'UNKNOWN', 't', 't')"
+            "values ('123456', 't', '/tmp', 'csbatch job.slurm', 'UNKNOWN', 't', 't')"
         )
 
     track_once()

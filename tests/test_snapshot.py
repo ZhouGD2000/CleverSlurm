@@ -1,7 +1,7 @@
 import sqlite3
 
-from ai_slurm.collect.snapshot import snapshot_files
-from ai_slurm.db import connect, init_db
+from cslurm.collect.snapshot import snapshot_files
+from cslurm.db import connect, init_db
 
 
 def test_content_addressed_store_deduplicates_identical_files(isolated_home, tmp_path):

@@ -27,8 +27,8 @@ class FallbackSemanticClient:
 
 
 def test_failed_state_creates_immediate_high_severity_analysis(isolated_home):
-    from ai_slurm.db import connect, init_db
-    from ai_slurm.notify.analysis import analyze_job
+    from cslurm.db import connect, init_db
+    from cslurm.notify.analysis import analyze_job
 
     with connect() as conn:
         init_db(conn)
@@ -46,8 +46,8 @@ def test_failed_state_creates_immediate_high_severity_analysis(isolated_home):
 
 
 def test_nonzero_derived_exit_code_creates_hard_failure(isolated_home):
-    from ai_slurm.db import connect, init_db
-    from ai_slurm.notify.analysis import analyze_job
+    from cslurm.db import connect, init_db
+    from cslurm.notify.analysis import analyze_job
 
     with connect() as conn:
         init_db(conn)
@@ -63,8 +63,8 @@ def test_nonzero_derived_exit_code_creates_hard_failure(isolated_home):
 
 
 def test_cancelled_with_user_cancel_event_is_digest(isolated_home):
-    from ai_slurm.db import connect, init_db
-    from ai_slurm.notify.analysis import analyze_job
+    from cslurm.db import connect, init_db
+    from cslurm.notify.analysis import analyze_job
 
     with connect() as conn:
         init_db(conn)
@@ -84,8 +84,8 @@ def test_cancelled_with_user_cancel_event_is_digest(isolated_home):
 
 
 def test_completed_log_converged_false_becomes_semantic_failed(isolated_home, tmp_path):
-    from ai_slurm.db import connect, init_db
-    from ai_slurm.notify.analysis import analyze_job, record_job_analysis
+    from cslurm.db import connect, init_db
+    from cslurm.notify.analysis import analyze_job, record_job_analysis
 
     stdout = tmp_path / "slurm-123456.out"
     stdout.write_text("iter 199: diff = 1.1e-3\nMax iteration reached\nconverged = false\n")
@@ -111,8 +111,8 @@ def test_completed_log_converged_false_becomes_semantic_failed(isolated_home, tm
 
 
 def test_completed_job_missing_required_output_file_fails_success_criteria(isolated_home, tmp_path, monkeypatch):
-    from ai_slurm.db import connect, init_db
-    from ai_slurm.notify.analysis import analyze_job
+    from cslurm.db import connect, init_db
+    from cslurm.notify.analysis import analyze_job
 
     criteria = tmp_path / "criteria.yml"
     criteria.write_text(
@@ -120,7 +120,7 @@ def test_completed_job_missing_required_output_file_fails_success_criteria(isola
         "  require_output_files:\n"
         "    - results/*.jld2\n"
     )
-    monkeypatch.setenv("AI_SLURM_SUCCESS_CRITERIA", str(criteria))
+    monkeypatch.setenv("CSLURM_SUCCESS_CRITERIA", str(criteria))
 
     with connect() as conn:
         init_db(conn)
@@ -137,11 +137,11 @@ def test_completed_job_missing_required_output_file_fails_success_criteria(isola
 
 
 def test_init_db_migrates_existing_jobs_table_with_notification_columns(tmp_path, monkeypatch):
-    from ai_slurm.db import connect, init_db
+    from cslurm.db import connect, init_db
 
     root = tmp_path / "root"
     root.mkdir()
-    monkeypatch.setenv("AI_SLURM_ROOT", str(root))
+    monkeypatch.setenv("CSLURM_ROOT", str(root))
     db = root / "db.sqlite"
     with sqlite3.connect(db) as conn:
         conn.execute("create table jobs (job_id text primary key, state text)")
@@ -157,14 +157,14 @@ def test_init_db_migrates_existing_jobs_table_with_notification_columns(tmp_path
 
 
 def test_ai_semantic_parser_rejects_malformed_json():
-    from ai_slurm.notify.semantic import parse_ai_analysis_json
+    from cslurm.notify.semantic import parse_ai_analysis_json
 
     with pytest.raises(ValueError, match="valid JSON"):
         parse_ai_analysis_json("{not json")
 
 
 def test_ai_semantic_parser_accepts_fenced_json():
-    from ai_slurm.notify.semantic import parse_ai_analysis_json
+    from cslurm.notify.semantic import parse_ai_analysis_json
 
     parsed = parse_ai_analysis_json(
         "```json\n"
@@ -186,11 +186,11 @@ def test_ai_semantic_parser_accepts_fenced_json():
 
 
 def test_ai_semantic_analysis_does_not_override_hard_failure(isolated_home, monkeypatch):
-    from ai_slurm.db import connect, init_db
-    from ai_slurm.notify.analysis import analyze_job
-    from ai_slurm.notify.semantic import merge_ai_analysis, request_ai_semantic_analysis
+    from cslurm.db import connect, init_db
+    from cslurm.notify.analysis import analyze_job
+    from cslurm.notify.semantic import merge_ai_analysis, request_ai_semantic_analysis
 
-    monkeypatch.setenv("AI_SLURM_NOTIFICATION_AI_ANALYSIS", "true")
+    monkeypatch.setenv("CSLURM_NOTIFICATION_AI_ANALYSIS", "true")
     client = FakeSemanticClient(
         json.dumps(
             {
@@ -223,11 +223,11 @@ def test_ai_semantic_analysis_does_not_override_hard_failure(isolated_home, monk
 
 
 def test_ai_semantic_analysis_falls_back_to_text_summary(isolated_home, monkeypatch):
-    from ai_slurm.db import connect, init_db
-    from ai_slurm.notify.analysis import analyze_job
-    from ai_slurm.notify.semantic import request_ai_semantic_analysis
+    from cslurm.db import connect, init_db
+    from cslurm.notify.analysis import analyze_job
+    from cslurm.notify.semantic import request_ai_semantic_analysis
 
-    monkeypatch.setenv("AI_SLURM_NOTIFICATION_AI_ANALYSIS", "true")
+    monkeypatch.setenv("CSLURM_NOTIFICATION_AI_ANALYSIS", "true")
     client = FallbackSemanticClient("The job reached the iteration limit and did not converge.")
 
     with connect() as conn:

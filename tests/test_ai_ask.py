@@ -1,7 +1,7 @@
 import json
 
-from ai_slurm.ai.ask import answer_question
-from ai_slurm.db import connect, init_db
+from cslurm.ai.ask import answer_question
+from cslurm.db import connect, init_db
 
 
 class FakeClient:
@@ -34,7 +34,7 @@ def test_answer_question_sends_recent_job_facts_to_ai(isolated_home):
         init_db(conn)
         conn.execute(
             "insert into jobs (job_id, submitted_at, submit_cwd, command, job_name, state, exit_code, summary_json, completion_summary_json, created_at, updated_at) "
-            "values ('46644', '2026-05-16T18:45:57+00:00', '/work', 'aisbatch smoke_real.slurm', 'cleverslurm-smoke', 'COMPLETED', '0:0', ?, ?, 't', 't')",
+            "values ('46644', '2026-05-16T18:45:57+00:00', '/work', 'csbatch smoke_real.slurm', 'cleverslurm-smoke', 'COMPLETED', '0:0', ?, ?, 't', 't')",
             (
                 json.dumps({"one_line_summary": "Run a smoke test."}),
                 json.dumps({"human_summary": "The smoke job completed successfully."}),
@@ -83,7 +83,7 @@ def test_answer_question_does_not_send_ai_failure_events(isolated_home):
         init_db(conn)
         conn.execute(
             "insert into jobs (job_id, submitted_at, submit_cwd, command, job_name, state, created_at, updated_at) "
-            "values ('46644', '2026-05-16T18:45:57+00:00', '/work', 'aisbatch smoke.slurm', 'smoke', 'COMPLETED', 't', 't')"
+            "values ('46644', '2026-05-16T18:45:57+00:00', '/work', 'csbatch smoke.slurm', 'smoke', 'COMPLETED', 't', 't')"
         )
         conn.execute(
             "insert into job_events (job_id, event_time, event_type, raw_output) "
@@ -109,7 +109,7 @@ def test_answer_question_falls_back_to_text_answer(isolated_home):
         init_db(conn)
         conn.execute(
             "insert into jobs (job_id, submitted_at, submit_cwd, command, job_name, state, created_at, updated_at) "
-            "values ('46644', '2026-05-16T18:45:57+00:00', '/work', 'aisbatch smoke.slurm', 'smoke', 'COMPLETED', 't', 't')"
+            "values ('46644', '2026-05-16T18:45:57+00:00', '/work', 'csbatch smoke.slurm', 'smoke', 'COMPLETED', 't', 't')"
         )
 
     fake = FallbackClient("最近完成了 46644。")

@@ -3,19 +3,19 @@ requires = ["setuptools>=68"]
 build-backend = "setuptools.build_meta"
 
 [project]
-name = "ai-slurm"
+name = "CleverSlurm"
 version = "0.1.0"
 description = "Deterministic Slurm job tracking helpers with fake-Slurm-testable command wrappers."
 requires-python = ">=3.10"
 
 [project.scripts]
-aisbatch = "ai_slurm.cli.aisbatch:main"
-aiscancel = "ai_slurm.cli.aiscancel:main"
-aisrun = "ai_slurm.cli.aisrun:main"
-aijobs = "ai_slurm.cli.aijobs:main"
-aitrack = "ai_slurm.cli.aitrack:main"
-aisummarize = "ai_slurm.cli.aisummarize:main"
-ainotify = "ai_slurm.cli.ainotify:main"
+csbatch = "cslurm.cli.csbatch:main"
+cscancel = "cslurm.cli.cscancel:main"
+csrun = "cslurm.cli.csrun:main"
+cjobs = "cslurm.cli.cjobs:main"
+ctrack = "cslurm.cli.ctrack:main"
+csummarize = "cslurm.cli.csummarize:main"
+cnotify = "cslurm.cli.cnotify:main"
 
 [tool.setuptools.packages.find]
 where = ["src"]

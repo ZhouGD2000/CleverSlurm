@@ -4,7 +4,7 @@ import subprocess
 from conftest import write_executable
 
 
-def test_aisbatch_collects_git_commit_status_and_diff(isolated_home, fake_bin, tmp_path, monkeypatch):
+def test_csbatch_collects_git_commit_status_and_diff(isolated_home, fake_bin, tmp_path, monkeypatch):
     write_executable(fake_bin / "sbatch", "#!/bin/sh\nprintf '123456\\n'\n")
 
     repo = tmp_path / "repo"
@@ -21,7 +21,7 @@ def test_aisbatch_collects_git_commit_status_and_diff(isolated_home, fake_bin, t
     script.write_text("#!/bin/bash\npython run.py\n")
     monkeypatch.chdir(repo)
 
-    from ai_slurm.cli.aisbatch import submit_batch
+    from cslurm.cli.csbatch import submit_batch
 
     submit_batch([str(script)])
 

@@ -8,12 +8,12 @@ Run:
 
 ```bash
 python3 -m pytest -q
-python3 -m compileall -q src/ai_slurm
+python3 -m compileall -q src/cslurm
 ```
 
 The tests cover:
 
-- `aisbatch` job id parsing from `sbatch --parsable`
+- `csbatch` job id parsing from `sbatch --parsable`
 - original and instrumented script snapshots
 - preservation of leading `#SBATCH` directives
 - sbatch command-line option passthrough
@@ -21,14 +21,14 @@ The tests cover:
 - batch program-finished marker ingestion
 - stdout/stderr path parsing
 - git commit/status/diff capture
-- fake `srun` execution through `aisrun`
-- `aisrun` CLI stdout/stderr and exit-code forwarding
+- fake `srun` execution through `csrun`
+- `csrun` CLI stdout/stderr and exit-code forwarding
 - fake `scancel` event recording
 - scancel option passthrough with CleverSlurm-only `--note`
 - fake `sacct` tracker updates, including no-header `sacct -n` output
 - runtime `commands.log` ingestion
-- `aijobs` details, events, files, commands, and logs
-- `aijobs ask` with a fake AI client over recent job facts
+- `cjobs` details, events, files, commands, and logs
+- `cjobs ask` with a fake AI client over recent job facts
 - Julia static `include(...)` parsing
 - content-addressed file storage
 - large-file metadata policy
@@ -37,7 +37,7 @@ The tests cover:
 
 ## Real Slurm Smoke Test
 
-Use a new working directory and a fresh `AI_SLURM_ROOT`. This keeps the smoke test isolated from any existing tracking database.
+Use a new working directory and a fresh `CSLURM_ROOT`. This keeps the smoke test isolated from any existing tracking database.
 
 ```bash
 mkdir -p ~/cleverslurm-smoke
@@ -65,12 +65,12 @@ EOF
 Submit and track:
 
 ```bash
-AI_SLURM_ROOT=$PWD/.ai-slurm-real PYTHONPATH=/path/to/cleverslurm/src \
-  python3 -m ai_slurm.cli.aisbatch smoke_real.slurm
+CSLURM_ROOT=$PWD/.cslurm-real PYTHONPATH=/path/to/cleverslurm/src \
+  python3 -m cslurm.cli.csbatch smoke_real.slurm
 
-AI_SLURM_ROOT=$PWD/.ai-slurm-real PYTHONPATH=/path/to/cleverslurm/src \
+CSLURM_ROOT=$PWD/.cslurm-real PYTHONPATH=/path/to/cleverslurm/src \
   python3 - <<'PY'
-from ai_slurm.slurm.tracker import track_once
+from cslurm.slurm.tracker import track_once
 track_once()
 PY
 ```
@@ -78,9 +78,9 @@ PY
 Inspect the job:
 
 ```bash
-AI_SLURM_ROOT=$PWD/.ai-slurm-real PYTHONPATH=/path/to/cleverslurm/src \
+CSLURM_ROOT=$PWD/.cslurm-real PYTHONPATH=/path/to/cleverslurm/src \
   python3 - <<'PY'
-from ai_slurm.cli.aijobs import show_job, show_logs
+from cslurm.cli.cjobs import show_job, show_logs
 job_id = "replace-with-job-id"
 print(show_job(job_id))
 print(show_logs(job_id, tail=50))
@@ -103,4 +103,4 @@ For smoke tests on a shared cluster:
 - Do not call `scancel` unless the specific smoke job is stuck and the owner explicitly approves it.
 - Never run broad cancellation commands such as `scancel -u USER`.
 - Do not delete pre-existing files or directories on the remote host.
-- Use a fresh test directory and fresh `AI_SLURM_ROOT`.
+- Use a fresh test directory and fresh `CSLURM_ROOT`.

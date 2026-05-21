@@ -3,7 +3,7 @@ import urllib.error
 
 import pytest
 
-from ai_slurm.ai.client import ModelClient
+from cslurm.ai.client import ModelClient
 
 
 class FakeResponse:
@@ -38,7 +38,7 @@ def test_openai_compatible_client_posts_chat_completion_request(isolated_home):
 
     client = ModelClient(
         api_key="secret",
-        provider="openai-compatible",
+        format="openai",
         base_url="https://api.example.test/v1",
         model="model-a",
         urlopen=fake_urlopen,
@@ -59,6 +59,16 @@ def test_openai_compatible_client_posts_chat_completion_request(isolated_home):
     assert "response_format" not in captured["body"]
 
 
+def test_model_client_rejects_legacy_compatible_format_name():
+    with pytest.raises(RuntimeError, match="Unsupported AI format"):
+        ModelClient(
+            api_key="secret",
+            format="openai-compatible",
+            base_url="https://api.example.test/v1",
+            model="model-a",
+        )
+
+
 def test_openai_compatible_client_allows_model_and_extra_body_override():
     captured = {}
 
@@ -68,7 +78,7 @@ def test_openai_compatible_client_allows_model_and_extra_body_override():
 
     client = ModelClient(
         api_key="secret",
-        provider="openai-compatible",
+        format="openai",
         base_url="https://api.example.test/v1",
         model="model-b",
         max_tokens=64,
@@ -92,7 +102,7 @@ def test_openai_compatible_client_can_send_enable_thinking_when_requested():
 
     client = ModelClient(
         api_key="secret",
-        provider="openai-compatible",
+        format="openai",
         base_url="https://api.example.test/v1",
         model="model-a",
         enable_thinking=False,
@@ -104,12 +114,12 @@ def test_openai_compatible_client_can_send_enable_thinking_when_requested():
 
 
 def test_openai_compatible_client_reads_enable_thinking_false_from_config(isolated_home, monkeypatch):
-    from ai_slurm.config import config_path
+    from cslurm.config import config_path
 
     monkeypatch.setenv("TEST_API_KEY", "secret")
     config_path().write_text(
         "[ai]\n"
-        "provider = \"openai-compatible\"\n"
+        "format = \"openai\"\n"
         "api_key_env = \"TEST_API_KEY\"\n"
         "base_url = \"https://api.example.test/v1\"\n"
         "model = \"model-a\"\n"
@@ -136,7 +146,7 @@ def test_openai_compatible_client_can_send_response_format_when_requested():
 
     client = ModelClient(
         api_key="secret",
-        provider="openai-compatible",
+        format="openai",
         base_url="https://api.example.test/v1",
         model="model-a",
         response_format="json_object",
@@ -158,7 +168,7 @@ def test_anthropic_compatible_client_posts_messages_request():
 
     client = ModelClient(
         api_key="secret",
-        provider="anthropic-compatible",
+        format="anthropic",
         base_url="https://api.example.test/anthropic",
         model="model-c",
         max_tokens=128,
@@ -183,12 +193,12 @@ def test_anthropic_compatible_client_posts_messages_request():
 
 
 def test_model_client_reads_protocol_base_url_and_key_env_from_config(isolated_home, monkeypatch):
-    from ai_slurm.config import config_path
+    from cslurm.config import config_path
 
     monkeypatch.setenv("KIMI_API_KEY", "kimi-secret")
     config_path().write_text(
         "[ai]\n"
-        "provider = \"anthropic-compatible\"\n"
+        "format = \"anthropic\"\n"
         "api_key_env = \"KIMI_API_KEY\"\n"
         "base_url = \"https://api.kimi.com/coding/\"\n"
         "model = \"kimi-for-coding\"\n"
@@ -212,12 +222,12 @@ def test_model_client_reads_protocol_base_url_and_key_env_from_config(isolated_h
 
 
 def test_model_client_reads_escaped_extra_body_json_from_config(isolated_home, monkeypatch):
-    from ai_slurm.config import config_path
+    from cslurm.config import config_path
 
     monkeypatch.setenv("DEEPSEEK_API_KEY", "deepseek-secret")
     config_path().write_text(
         "[ai]\n"
-        "provider = \"openai-compatible\"\n"
+        "format = \"openai\"\n"
         "api_key_env = \"DEEPSEEK_API_KEY\"\n"
         "base_url = \"https://api.deepseek.com\"\n"
         "model = \"deepseek-v4-pro\"\n"
@@ -365,12 +375,12 @@ def test_model_client_does_not_retry_nonretryable_http_errors():
 
 
 def test_model_client_reads_timeout_and_fallback_models_from_config(isolated_home, monkeypatch):
-    from ai_slurm.config import config_path
+    from cslurm.config import config_path
 
     monkeypatch.setenv("TEST_API_KEY", "secret")
     config_path().write_text(
         "[ai]\n"
-        "provider = \"openai-compatible\"\n"
+        "format = \"openai\"\n"
         "api_key_env = \"TEST_API_KEY\"\n"
         "base_url = \"https://api.example.test/v1\"\n"
         "model = \"primary-model\"\n"
@@ -393,8 +403,8 @@ def test_model_client_reads_timeout_and_fallback_models_from_config(isolated_hom
 
 
 def test_model_client_requires_configured_base_url_and_model(isolated_home, monkeypatch):
-    monkeypatch.delenv("AI_SLURM_AI_BASE_URL", raising=False)
-    monkeypatch.delenv("AI_SLURM_AI_MODEL", raising=False)
+    monkeypatch.delenv("CSLURM_AI_BASE_URL", raising=False)
+    monkeypatch.delenv("CSLURM_AI_MODEL", raising=False)
     with pytest.raises(RuntimeError, match="Missing AI base URL"):
         ModelClient(api_key="secret")
 

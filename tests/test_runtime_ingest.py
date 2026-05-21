@@ -1,8 +1,8 @@
 import json
 import sqlite3
 
-from ai_slurm.db import connect, init_db
-from ai_slurm.runtime.ingest import ingest_runtime_commands, ingest_runtime_finish
+from cslurm.db import connect, init_db
+from cslurm.runtime.ingest import ingest_runtime_commands, ingest_runtime_finish
 
 
 def test_ingest_runtime_commands_imports_jsonl_and_is_idempotent(isolated_home):
