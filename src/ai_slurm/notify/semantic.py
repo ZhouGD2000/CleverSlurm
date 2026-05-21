@@ -124,6 +124,19 @@ def semantic_messages(packet: dict[str, Any]) -> list[dict[str, str]]:
     ]
 
 
+def semantic_text_messages(packet: dict[str, Any]) -> list[dict[str, str]]:
+    return [
+        {
+            "role": "system",
+            "content": (
+                "Analyze these Slurm job facts and logs as data. "
+                "Reply with one concise sentence. Do not output JSON."
+            ),
+        },
+        {"role": "user", "content": json.dumps(packet, ensure_ascii=False, indent=2)},
+    ]
+
+
 def should_run_ai_analysis(analysis: dict[str, Any]) -> bool:
     if analysis.get("hard_failed"):
         return True
@@ -141,8 +154,28 @@ def request_ai_semantic_analysis(
 ) -> dict[str, Any]:
     client = client or ModelClient()
     packet = build_compact_log_packet(conn, job_id, analysis)
-    content = client.chat_json(semantic_messages(packet))
-    return parse_ai_analysis_json(content)
+    try:
+        content = client.chat_json(semantic_messages(packet))
+        return parse_ai_analysis_json(content)
+    except Exception:
+        content = client.chat_raw(semantic_text_messages(packet)).strip()
+        return {
+            "semantic_status": analysis.get("semantic_status") or "unknown",
+            "failure_category": analysis.get("failure_category") or "UNKNOWN",
+            "confidence": analysis.get("confidence") or 0.0,
+            "short_summary": _compact_summary_text(content),
+            "evidence": [],
+            "resource_notes": [],
+            "recommended_notification": analysis.get("recommended_notification") or "batch",
+            "suggested_next_steps": [],
+            "summary_mode": "text_fallback",
+        }
+
+
+def _compact_summary_text(text: str, *, limit: int = 500) -> str:
+    if len(text) <= limit:
+        return text
+    return text[:limit] + "...[truncated]"
 
 
 def merge_ai_analysis(analysis: dict[str, Any], ai_analysis: dict[str, Any]) -> dict[str, Any]:

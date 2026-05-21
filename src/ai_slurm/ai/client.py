@@ -107,6 +107,12 @@ class ModelClient:
         self.last_model: str | None = None
 
     def chat_json(self, messages: list[dict]) -> str:
+        return self._chat_with_fallback(messages, require_json=True)
+
+    def chat_raw(self, messages: list[dict]) -> str:
+        return self._chat_with_fallback(messages, require_json=False)
+
+    def _chat_with_fallback(self, messages: list[dict], *, require_json: bool) -> str:
         errors = []
         for model in self._candidate_models():
             for attempt in range(self.request_retries + 1):
@@ -119,11 +125,15 @@ class ModelClient:
                         continue
                     errors.append(f"{model}: {exc}")
                     break
-                try:
-                    parse_json_object(content, error_label="AI model response")
-                except ValueError as exc:
-                    errors.append(f"{model}: {exc}")
+                if not content or not content.strip():
+                    errors.append(f"{model}: AI model response was empty")
                     break
+                if require_json:
+                    try:
+                        parse_json_object(content, error_label="AI model response")
+                    except ValueError as exc:
+                        errors.append(f"{model}: {exc}")
+                        break
                 self.last_model = model
                 return content
         detail = " | ".join(errors) if errors else "no models configured"

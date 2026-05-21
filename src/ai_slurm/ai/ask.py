@@ -23,6 +23,15 @@ def _decode_json(value: str | None):
         return value
 
 
+def _compact_text(value: str | None, *, limit: int = 500) -> str | None:
+    if value is None:
+        return None
+    text = str(value)
+    if len(text) <= limit:
+        return text
+    return text[:limit] + "...[truncated]"
+
+
 def _recent_job_facts(conn, limit: int) -> list[dict]:
     jobs = conn.execute(
         """
@@ -41,7 +50,7 @@ def _recent_job_facts(conn, limit: int) -> list[dict]:
             """
             select event_time, event_type, note, raw_output
             from job_events
-            where job_id = ?
+            where job_id = ? and event_type not like 'AI_%'
             order by id desc
             limit 10
             """,
@@ -71,7 +80,15 @@ def _recent_job_facts(conn, limit: int) -> list[dict]:
                 "command": job["command"],
                 "summary": _decode_json(job["summary_json"]),
                 "completion_summary": _decode_json(job["completion_summary_json"]),
-                "recent_events": [{key: row[key] for key in row.keys()} for row in events],
+                "recent_events": [
+                    {
+                        "event_time": row["event_time"],
+                        "event_type": row["event_type"],
+                        "note": _compact_text(row["note"]),
+                        "raw_output": _compact_text(row["raw_output"]),
+                    }
+                    for row in events
+                ],
                 "runtime_commands": [{key: row[key] for key in row.keys()} for row in commands],
             }
         )
@@ -89,6 +106,23 @@ def build_question_messages(question: str, facts: list[dict]) -> list[dict]:
     ]
 
 
+def build_text_question_messages(question: str, facts: list[dict]) -> list[dict]:
+    payload = {
+        "question": question,
+        "recent_jobs": facts,
+    }
+    return [
+        {
+            "role": "system",
+            "content": (
+                "Answer questions about Slurm jobs using only the provided SQLite-derived facts. "
+                "Answer in the same language as the user's question. Do not output JSON."
+            ),
+        },
+        {"role": "user", "content": json.dumps(payload, ensure_ascii=False, indent=2)},
+    ]
+
+
 def answer_question(
     question: str,
     *,
@@ -99,9 +133,12 @@ def answer_question(
     with connect() as conn:
         init_db(conn)
         facts = _recent_job_facts(conn, limit)
-    content = client.chat_json(build_question_messages(question, facts))
-    parsed = parse_summary_json(content)
-    answer = parsed.get("answer")
+    try:
+        content = client.chat_json(build_question_messages(question, facts))
+        parsed = parse_summary_json(content)
+        answer = parsed.get("answer")
+    except Exception:
+        answer = client.chat_raw(build_text_question_messages(question, facts)).strip()
     if not isinstance(answer, str) or not answer.strip():
         raise ValueError("AI answer JSON must contain a non-empty 'answer' string")
     return answer

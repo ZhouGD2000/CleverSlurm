@@ -14,6 +14,21 @@ class FakeClient:
         return json.dumps(self.content)
 
 
+class FallbackClient:
+    def __init__(self, text):
+        self.text = text
+        self.json_messages = None
+        self.raw_messages = None
+
+    def chat_json(self, messages):
+        self.json_messages = messages
+        raise RuntimeError("json failed")
+
+    def chat_raw(self, messages):
+        self.raw_messages = messages
+        return self.text
+
+
 def test_answer_question_sends_recent_job_facts_to_ai(isolated_home):
     with connect() as conn:
         init_db(conn)
@@ -61,3 +76,43 @@ def test_answer_question_accepts_json_with_surrounding_text(isolated_home):
     fake.chat_json = lambda messages: 'Result:\n{"answer":"OK"}\nDone.'
 
     assert answer_question("最近完成了什么任务？", client=fake) == "OK"
+
+
+def test_answer_question_does_not_send_ai_failure_events(isolated_home):
+    with connect() as conn:
+        init_db(conn)
+        conn.execute(
+            "insert into jobs (job_id, submitted_at, submit_cwd, command, job_name, state, created_at, updated_at) "
+            "values ('46644', '2026-05-16T18:45:57+00:00', '/work', 'aisbatch smoke.slurm', 'smoke', 'COMPLETED', 't', 't')"
+        )
+        conn.execute(
+            "insert into job_events (job_id, event_time, event_type, raw_output) "
+            "values ('46644', 't', 'AI_LOG_ANALYSIS_FAILED', 'RuntimeError: model timeout')"
+        )
+        conn.execute(
+            "insert into job_events (job_id, event_time, event_type, raw_output) "
+            "values ('46644', 't', 'STATE_CHANGED', 'UNKNOWN -> COMPLETED')"
+        )
+
+    fake = FakeClient({"answer": "ok"})
+
+    answer_question("最近完成了什么任务？", client=fake)
+
+    content = fake.messages[1]["content"]
+    assert "AI_LOG_ANALYSIS_FAILED" not in content
+    assert "model timeout" not in content
+    assert "STATE_CHANGED" in content
+
+
+def test_answer_question_falls_back_to_text_answer(isolated_home):
+    with connect() as conn:
+        init_db(conn)
+        conn.execute(
+            "insert into jobs (job_id, submitted_at, submit_cwd, command, job_name, state, created_at, updated_at) "
+            "values ('46644', '2026-05-16T18:45:57+00:00', '/work', 'aisbatch smoke.slurm', 'smoke', 'COMPLETED', 't', 't')"
+        )
+
+    fake = FallbackClient("最近完成了 46644。")
+
+    assert answer_question("最近完成了什么任务？", client=fake) == "最近完成了 46644。"
+    assert fake.raw_messages is not None

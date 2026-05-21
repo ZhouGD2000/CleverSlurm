@@ -114,6 +114,8 @@ extra_body_json = "{\"thinking\":{\"type\":\"enabled\"},\"reasoning_effort\":\"h
 
 CleverSlurm does not send `response_format` by default because provider support differs, and some models can become slow or fail when JSON mode is forced. The prompts still ask for one JSON object, and CleverSlurm extracts that object even when a provider wraps it in Markdown fences or short surrounding text.
 
+If a provider returns invalid JSON or times out on a structured response, the AI-facing commands fall back to a shorter natural-language prompt and store the model's text inside a structured local record. This keeps `aisbatch` automatic summaries, `aisummarize`, `aijobs ask`, and notification AI analysis usable on smaller or less JSON-stable models.
+
 For an OpenAI-compatible endpoint that benefits from JSON mode, enable it explicitly:
 
 ```toml

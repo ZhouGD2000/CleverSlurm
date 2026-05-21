@@ -321,6 +321,21 @@ def test_model_client_accepts_json_wrapped_in_markdown_fence():
     assert client.last_model == "primary-model"
 
 
+def test_model_client_chat_raw_accepts_non_json_content():
+    def fake_urlopen(request, timeout):
+        return FakeResponse({"choices": [{"message": {"content": "plain answer"}}]})
+
+    client = ModelClient(
+        api_key="secret",
+        base_url="https://api.example.test/v1",
+        model="primary-model",
+        urlopen=fake_urlopen,
+    )
+
+    assert client.chat_raw([{"role": "user", "content": "x"}]) == "plain answer"
+    assert client.last_model == "primary-model"
+
+
 def test_model_client_does_not_retry_nonretryable_http_errors():
     calls = []
 

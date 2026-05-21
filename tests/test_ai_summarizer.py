@@ -15,6 +15,21 @@ class FakeClient:
         return json.dumps(self.content)
 
 
+class FallbackClient:
+    def __init__(self, text):
+        self.text = text
+        self.json_messages = None
+        self.raw_messages = None
+
+    def chat_json(self, messages):
+        self.json_messages = messages
+        raise RuntimeError("json failed")
+
+    def chat_raw(self, messages):
+        self.raw_messages = messages
+        return self.text
+
+
 def test_summarize_submission_writes_structured_json_and_event(isolated_home):
     with connect() as conn:
         init_db(conn)
@@ -90,3 +105,46 @@ def test_summary_parser_accepts_fenced_json():
 
     assert parsed["job_id"] == "123456"
     assert parsed["one_line_summary"] == "ok"
+
+
+def test_summarize_submission_does_not_send_ai_failure_events(isolated_home):
+    with connect() as conn:
+        init_db(conn)
+        conn.execute(
+            "insert into jobs (job_id, submitted_at, submit_cwd, command, state, created_at, updated_at) "
+            "values ('123456', 't', '/work', 'aisbatch job.slurm', 'UNKNOWN', 't', 't')"
+        )
+        conn.execute(
+            "insert into job_events (job_id, event_time, event_type, raw_output) "
+            "values ('123456', 't', 'AI_SUMMARY_FAILED', 'RuntimeError: recursive model failure')"
+        )
+        conn.execute(
+            "insert into job_events (job_id, event_time, event_type, raw_output) "
+            "values ('123456', 't', 'STATE_CHANGED', 'UNKNOWN -> COMPLETED')"
+        )
+
+    fake = FakeClient({"job_id": "123456", "one_line_summary": "ok"})
+
+    summarize_submission("123456", client=fake)
+
+    content = fake.messages[1]["content"]
+    assert "AI_SUMMARY_FAILED" not in content
+    assert "recursive model failure" not in content
+    assert "STATE_CHANGED" in content
+
+
+def test_summarize_submission_falls_back_to_text_summary(isolated_home):
+    with connect() as conn:
+        init_db(conn)
+        conn.execute(
+            "insert into jobs (job_id, submitted_at, submit_cwd, command, state, created_at, updated_at) "
+            "values ('123456', 't', '/work', 'aisbatch job.slurm', 'UNKNOWN', 't', 't')"
+        )
+
+    fake = FallbackClient("Plain AI summary.")
+
+    summary = summarize_submission("123456", client=fake)
+
+    assert summary["one_line_summary"] == "Plain AI summary."
+    assert summary["summary_mode"] == "text_fallback"
+    assert fake.raw_messages is not None

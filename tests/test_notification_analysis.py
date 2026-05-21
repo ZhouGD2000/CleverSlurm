@@ -13,6 +13,19 @@ class FakeSemanticClient:
         return self.content
 
 
+class FallbackSemanticClient:
+    def __init__(self, text: str):
+        self.text = text
+
+    def chat_json(self, messages):
+        self.json_messages = messages
+        raise RuntimeError("json failed")
+
+    def chat_raw(self, messages):
+        self.raw_messages = messages
+        return self.text
+
+
 def test_failed_state_creates_immediate_high_severity_analysis(isolated_home):
     from ai_slurm.db import connect, init_db
     from ai_slurm.notify.analysis import analyze_job
@@ -207,3 +220,24 @@ def test_ai_semantic_analysis_does_not_override_hard_failure(isolated_home, monk
     assert merged["semantic_status"] == "hard_failed"
     assert merged["failure_category"] == "FAILED"
     assert "untrusted program output" in client.messages[0]["content"]
+
+
+def test_ai_semantic_analysis_falls_back_to_text_summary(isolated_home, monkeypatch):
+    from ai_slurm.db import connect, init_db
+    from ai_slurm.notify.analysis import analyze_job
+    from ai_slurm.notify.semantic import request_ai_semantic_analysis
+
+    monkeypatch.setenv("AI_SLURM_NOTIFICATION_AI_ANALYSIS", "true")
+    client = FallbackSemanticClient("The job reached the iteration limit and did not converge.")
+
+    with connect() as conn:
+        init_db(conn)
+        conn.execute(
+            "insert into jobs (job_id, state, exit_code, created_at, updated_at) "
+            "values ('123456', 'COMPLETED', '0:0', 't', 't')"
+        )
+        analysis = analyze_job(conn, "123456")
+        ai_analysis = request_ai_semantic_analysis(conn, "123456", analysis, client=client)
+
+    assert ai_analysis["summary_mode"] == "text_fallback"
+    assert "did not converge" in ai_analysis["short_summary"]
