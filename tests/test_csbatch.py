@@ -179,54 +179,47 @@ def test_csbatch_module_entrypoint_preserves_parsable_output(isolated_home, fake
     assert result.stdout == "123456\n"
 
 
-def test_csbatch_triggers_submission_summary_after_recording_job(isolated_home, fake_bin, tmp_path, monkeypatch):
+def test_csbatch_queues_submission_summary_after_recording_job(isolated_home, fake_bin, tmp_path, monkeypatch):
     write_executable(fake_bin / "sbatch", "#!/bin/sh\nprintf '123456\\n'\n")
     script = tmp_path / "job.slurm"
     script.write_text("#!/bin/bash\nhostname\n")
-    calls = []
+    launched = []
 
-    def fake_auto_summarize(job_id):
-        calls.append(job_id)
-        with sqlite3.connect(isolated_home / "db.sqlite") as conn:
-            conn.execute(
-                "update jobs set summary_json = ? where job_id = ?",
-                ('{"one_line_summary":"auto summary"}', job_id),
-            )
-            conn.execute(
-                "insert into job_events (job_id, event_type, raw_output) values (?, ?, ?)",
-                (job_id, "AI_SUMMARY_CREATED", '{"one_line_summary":"auto summary"}'),
-            )
-            conn.commit()
-        return "created"
+    def fake_launch(job_id):
+        from cslurm.ai.auto import record_auto_summary_queued
+        launched.append(job_id)
+        record_auto_summary_queued(job_id, pid=777)
+        return "queued"
 
-    monkeypatch.setattr("cslurm.cli.csbatch.auto_summarize_submission", fake_auto_summarize)
+    monkeypatch.setattr("cslurm.cli.csbatch.launch_auto_summary", fake_launch)
 
     from cslurm.cli.csbatch import submit_batch
 
     submit_batch([str(script)])
 
-    assert calls == ["123456"]
+    assert launched == ["123456"]
     with sqlite3.connect(isolated_home / "db.sqlite") as conn:
         row = conn.execute("select summary_json from jobs where job_id = '123456'").fetchone()
         events = conn.execute(
-            "select event_type from job_events where job_id = '123456' order by id"
+            "select event_type, raw_output from job_events where job_id = '123456' order by id"
         ).fetchall()
 
-    assert row[0] == '{"one_line_summary":"auto summary"}'
-    assert [event[0] for event in events] == ["SUBMITTED", "AI_SUMMARY_CREATED"]
+    assert row[0] is None
+    assert [event[0] for event in events] == ["SUBMITTED", "AI_SUMMARY_QUEUED"]
+    assert events[1][1] == "pid=777"
 
 
-def test_csbatch_records_summary_failure_without_breaking_submission(isolated_home, fake_bin, tmp_path, monkeypatch):
+def test_csbatch_records_summary_queue_failure_without_breaking_submission(isolated_home, fake_bin, tmp_path, monkeypatch):
     write_executable(fake_bin / "sbatch", "#!/bin/sh\nprintf '123456\\n'\n")
     script = tmp_path / "job.slurm"
     script.write_text("#!/bin/bash\nhostname\n")
 
-    def fake_auto_summarize(job_id):
+    def fake_launch(job_id):
         from cslurm.ai.auto import record_auto_summary_failure
-        record_auto_summary_failure(job_id, RuntimeError("temporary AI failure"))
+        record_auto_summary_failure(job_id, RuntimeError("could not start AI worker"))
         return "failed"
 
-    monkeypatch.setattr("cslurm.cli.csbatch.auto_summarize_submission", fake_auto_summarize)
+    monkeypatch.setattr("cslurm.cli.csbatch.launch_auto_summary", fake_launch)
 
     from cslurm.cli.csbatch import submit_batch
 
@@ -239,4 +232,67 @@ def test_csbatch_records_summary_failure_without_breaking_submission(isolated_ho
         ).fetchone()
 
     assert event[0] == "AI_SUMMARY_FAILED"
-    assert "temporary AI failure" in event[1]
+    assert "could not start AI worker" in event[1]
+
+
+def test_launch_auto_summary_starts_detached_worker(isolated_home, monkeypatch):
+    from cslurm.cli.csbatch import launch_auto_summary
+
+    launched = []
+
+    class FakeProcess:
+        pid = 888
+
+    def fake_popen(argv, **kwargs):
+        launched.append((argv, kwargs))
+        return FakeProcess()
+
+    monkeypatch.setattr("cslurm.cli.csbatch.subprocess.Popen", fake_popen)
+
+    assert launch_auto_summary("123456") == "queued"
+
+    with sqlite3.connect(isolated_home / "db.sqlite") as conn:
+        event = conn.execute(
+            "select event_type, raw_output from job_events where job_id = '123456'"
+        ).fetchone()
+
+    assert launched[0][0][-3:] == ["-m", "cslurm.ai.auto", "123456"]
+    assert launched[0][1]["start_new_session"] is True
+    assert event == ("AI_SUMMARY_QUEUED", "pid=888")
+
+
+def test_background_auto_summary_worker_records_created_summary(isolated_home, monkeypatch):
+    from cslurm.ai.auto import main
+    from cslurm.db import connect, init_db
+
+    def fake_summarize_submission(job_id):
+        with connect() as conn:
+            conn.execute(
+                "update jobs set summary_json = ? where job_id = ?",
+                ('{"one_line_summary":"auto summary"}', job_id),
+            )
+            conn.execute(
+                "insert into job_events (job_id, event_type, raw_output) values (?, ?, ?)",
+                (job_id, "AI_SUMMARY_CREATED", '{"one_line_summary":"auto summary"}'),
+            )
+            conn.commit()
+
+    monkeypatch.setattr("cslurm.ai.auto.summarize_submission", fake_summarize_submission)
+    monkeypatch.setattr("sys.argv", ["auto", "123456"])
+    with connect() as conn:
+        init_db(conn)
+        conn.execute(
+            "insert into jobs (job_id, state, created_at, updated_at) values ('123456', 'UNKNOWN', 't', 't')"
+        )
+        conn.commit()
+
+    main()
+
+    with sqlite3.connect(isolated_home / "db.sqlite") as conn:
+        row = conn.execute("select summary_json from jobs where job_id = '123456'").fetchone()
+        event = conn.execute(
+            "select event_type from job_events where job_id = '123456' and event_type = 'AI_SUMMARY_CREATED'"
+        ).fetchone()
+
+    assert row[0] == '{"one_line_summary":"auto summary"}'
+    assert event[0] == "AI_SUMMARY_CREATED"

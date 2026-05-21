@@ -100,7 +100,7 @@ csbatch -p CPU2 --time=00:01:00 job.slurm arg1 arg2
 csbatch -p CPU2 --wrap "hostname && python3 script.py"
 ```
 
-After a successful submission, `csbatch` automatically triggers an AI submission summary and stores it in `summary_json`. If the AI request fails, submission still succeeds and `cjobs events <job_id>` will show `AI_SUMMARY_FAILED`.
+After a successful submission, `csbatch` queues the AI submission summary in a detached background worker and returns immediately. `cjobs events <job_id>` first shows `AI_SUMMARY_QUEUED`; when the worker finishes it records `AI_SUMMARY_CREATED` and stores `summary_json`, or records `AI_SUMMARY_FAILED` if the request fails. Worker stdout/stderr goes to `~/.cslurm/jobs/<job_id>/auto_summary.log`.
 
 Track known jobs:
 

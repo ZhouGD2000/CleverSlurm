@@ -314,7 +314,7 @@ def _dispatch_immediate(conn, *, limit: int, urlopen, webhook_url: str, secret: 
     return sent
 
 
-def dispatch_pending(*, limit: int = 50, mode: str = "immediate", force: bool = False, urlopen=None) -> int:
+def dispatch_pending(*, limit: int = 500, mode: str = "immediate", force: bool = False, urlopen=None) -> int:
     if not notification_enabled():
         return 0
     webhook_url = feishu_webhook_url()

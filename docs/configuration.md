@@ -170,7 +170,7 @@ cjobs ask "最近完成了什么任务？都是些什么工作？"
 
 `cjobs ask` builds a JSON context from recent SQLite job records, then asks the configured model to answer from that context only.
 
-`csbatch` triggers a submission summary automatically after it records a successful submission. If the AI request fails, the job submission still succeeds and an `AI_SUMMARY_FAILED` event is recorded. Disable automatic summaries when needed:
+`csbatch` queues a submission summary in a detached background worker after it records a successful submission, so the submit command does not wait for the model request. The queue event is recorded as `AI_SUMMARY_QUEUED`; worker success records `AI_SUMMARY_CREATED`, and worker failure records `AI_SUMMARY_FAILED`. Worker stdout/stderr is written to `~/.cslurm/jobs/<job_id>/auto_summary.log`. Disable automatic summaries when needed:
 
 ```bash
 export CSLURM_AI_AUTO_SUMMARY=false

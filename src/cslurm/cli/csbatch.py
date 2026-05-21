@@ -1,13 +1,14 @@
 import os
 import shutil
+import subprocess
 import sys
 from dataclasses import dataclass
 from datetime import datetime, timezone
 from pathlib import Path
 
 from cslurm.collect.git import collect_git_metadata
-from cslurm.ai.auto import auto_summarize_submission
-from cslurm.config import root_dir
+from cslurm.ai.auto import record_auto_summary_failure, record_auto_summary_queued
+from cslurm.config import ai_auto_summary_enabled, root_dir
 from cslurm.db import connect, init_db
 from cslurm.slurm.commands import run_slurm_command
 
@@ -214,6 +215,29 @@ def _wrap_script_text(command: str) -> str:
     return "#!/bin/bash\n" + command + "\n"
 
 
+def launch_auto_summary(job_id: str) -> str:
+    if not ai_auto_summary_enabled():
+        return "disabled"
+    job_dir = root_dir() / "jobs" / job_id
+    job_dir.mkdir(parents=True, exist_ok=True)
+    log_path = job_dir / "auto_summary.log"
+    try:
+        with log_path.open("ab") as log:
+            process = subprocess.Popen(
+                [sys.executable, "-m", "cslurm.ai.auto", job_id],
+                stdout=log,
+                stderr=subprocess.STDOUT,
+                stdin=subprocess.DEVNULL,
+                close_fds=True,
+                start_new_session=True,
+            )
+    except Exception as exc:
+        record_auto_summary_failure(job_id, exc)
+        return "failed"
+    record_auto_summary_queued(job_id, pid=process.pid)
+    return "queued"
+
+
 def submit_batch_result(argv: list[str]) -> BatchSubmission:
     parsed = _parse_sbatch_invocation(argv)
     script = parsed.script_path
@@ -287,7 +311,7 @@ def submit_batch_result(argv: list[str]) -> BatchSubmission:
         )
         conn.commit()
 
-    auto_summarize_submission(job_id)
+    launch_auto_summary(job_id)
     return BatchSubmission(job_id=job_id, user_parsable=parsed.user_parsable, stderr=result.stderr)
 
 

@@ -94,7 +94,7 @@ cnotify dispatch --mode digest --force
 cnotify dispatch --mode all
 ```
 
-`ctrack` dispatches automatically by default. A small number of immediate hard-failure notifications are sent as individual cards. If pending immediate notifications reach `immediate_group_threshold`, they are grouped by `group_id` when available, otherwise by category, and sent as summary cards. `batch` and `digest` notifications use the same grouping strategy and are sent once the configured window has elapsed. Set `CSLURM_NOTIFICATION_AUTO_DISPATCH=false` to record rows without sending from the tracker.
+`ctrack` dispatches automatically by default and processes up to 500 pending notifications per run. A small number of immediate hard-failure notifications are sent as individual cards. If pending immediate notifications reach `immediate_group_threshold`, they are grouped by `group_id` when available, otherwise by category, and sent as summary cards. `batch` and `digest` notifications use the same grouping strategy and are sent once the configured window has elapsed. Set `CSLURM_NOTIFICATION_AUTO_DISPATCH=false` to record rows without sending from the tracker.
 
 `cnotify dispatch --mode batch --force` is useful for testing because it sends the grouped summary without waiting for `batch_window_minutes`.
 
