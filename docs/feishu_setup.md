@@ -105,6 +105,19 @@ message_format = "card"
 batch_window_minutes = "30"
 ```
 
+If you intentionally store the webhook and secret directly in the config file,
+use `webhook_url` and `secret`:
+
+```toml
+[notification.feishu]
+webhook_url = "https://open.feishu.cn/open-apis/bot/v2/hook/..."
+secret = "..."
+```
+
+The `webhook_url_env` and `secret_env` fields mean "read the value from this
+environment variable name". CleverSlurm also accepts obvious direct values in
+those fields for compatibility, but `webhook_url` and `secret` are clearer.
+
 Useful environment overrides:
 
 ```bash

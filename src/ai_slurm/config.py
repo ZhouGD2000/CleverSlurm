@@ -155,16 +155,34 @@ def _bool_config(env_name: str, section: str, key: str, default: bool) -> bool:
     return value.lower() in {"1", "true", "yes", "on"}
 
 
+def _looks_like_url(value: str) -> bool:
+    return value.startswith(("http://", "https://"))
+
+
+def _looks_like_env_var_name(value: str) -> bool:
+    return bool(value) and value.upper() == value and value.replace("_", "").isalnum() and not value[0].isdigit()
+
+
 def feishu_webhook_url() -> str | None:
     section = load_config().get("notification.feishu", {})
     env_name = section.get("webhook_url_env") or "AI_SLURM_FEISHU_WEBHOOK"
-    return os.environ.get(env_name) or section.get("webhook_url")
+    value = os.environ.get(env_name) or section.get("webhook_url")
+    if value:
+        return value
+    if section.get("webhook_url_env") and _looks_like_url(section["webhook_url_env"]):
+        return section["webhook_url_env"]
+    return None
 
 
 def feishu_secret() -> str | None:
     section = load_config().get("notification.feishu", {})
     env_name = section.get("secret_env") or "AI_SLURM_FEISHU_SECRET"
-    return os.environ.get(env_name) or section.get("secret")
+    value = os.environ.get(env_name) or section.get("secret")
+    if value:
+        return value
+    if section.get("secret_env") and not _looks_like_env_var_name(section["secret_env"]):
+        return section["secret_env"]
+    return None
 
 
 def feishu_message_format() -> str:

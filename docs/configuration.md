@@ -168,6 +168,16 @@ message_format = "card"
 batch_window_minutes = "30"
 ```
 
+If you choose to store the values directly in `~/.ai-slurm/config.toml`, use:
+
+```toml
+[notification.feishu]
+webhook_url = "https://open.feishu.cn/open-apis/bot/v2/hook/..."
+secret = "..."
+```
+
+The `*_env` fields are environment variable names. Direct values are supported for convenience, but environment variables are safer for shared repositories and shell histories.
+
 `aitrack` records a `job_analysis` row and a `notifications` row when a job reaches a terminal Slurm state. Hard failures, nonzero `ExitCode`, and nonzero `DerivedExitCode` are immediate notifications. Normal completions and user cancellations are grouped into batch or digest summary cards after `batch_window_minutes`.
 
 AI semantic log analysis is opt-in:
