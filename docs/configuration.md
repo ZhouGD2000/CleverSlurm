@@ -134,7 +134,7 @@ For a SiliconFlow Qwen setup where `Qwen/Qwen3.5-4B` is the preferred model but 
 provider = "openai-compatible"
 base_url = "https://api.siliconflow.cn/v1"
 model = "Qwen/Qwen3.5-4B"
-fallback_models = "Qwen/Qwen3.5-9B"
+fallback_models = "Qwen/Qwen2.5-7B-Instruct"
 timeout_seconds = "12"
 enable_thinking = "false"
 ```
