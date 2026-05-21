@@ -110,7 +110,7 @@ ctrack auto off
 When running from source without installing console scripts, use:
 
 ```bash
-PYTHONPATH=/home/zgd/software/cleverslurm/src python3 -m cslurm.cli.ctrack auto on --repo /home/zgd/software/cleverslurm
+PYTHONPATH=/path/to/cleverslurm/src python3 -m cslurm.cli.ctrack auto on --repo /path/to/cleverslurm
 ```
 
 The generated cron entry runs once per minute, uses `flock` to avoid overlapping tracker runs if Slurm accounting or Feishu is slow, and writes logs to `~/.cslurm/ctrack.log`. The command only edits the marked `# BEGIN CleverSlurm ctrack` block in the user's crontab.

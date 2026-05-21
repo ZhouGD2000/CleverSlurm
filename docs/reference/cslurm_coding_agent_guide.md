@@ -253,11 +253,11 @@ Example:
 time=2026-05-14T02:31:11
 job_id=123456
 hostname=node012
-cwd=/home/zgd/project/DMFT
+cwd=/work/project/DMFT
 kind=julia
-executable=/home/zgd/software/julia-1.11.5/bin/julia
+executable=/opt/julia-1.11.5/bin/julia
 argv=julia --project=. run_dmft.jl --U 4 --mixing broyden
-entry_file=/home/zgd/project/DMFT/run_dmft.jl
+entry_file=/work/project/DMFT/run_dmft.jl
 ```
 
 This log answers:
@@ -323,8 +323,8 @@ Each wrapper should:
 Important: prevent recursive self-calls. Either resolve the real executable before modifying PATH, or store paths in environment variables such as:
 
 ```bash
-CSLURM_REAL_JULIA=/home/zgd/software/julia-1.11.5/bin/julia
-CSLURM_REAL_PYTHON=/home/zgd/miniconda/envs/env/bin/python
+CSLURM_REAL_JULIA=/opt/julia-1.11.5/bin/julia
+CSLURM_REAL_PYTHON=/opt/conda/envs/env/bin/python
 CSLURM_REAL_MATLAB=/usr/local/MATLAB/R2024b/bin/matlab
 CSLURM_REAL_SRUN=/usr/bin/srun
 ```
@@ -554,7 +554,7 @@ Example `file_manifest.json`:
   "job_id": "123456",
   "files": [
     {
-      "path": "/home/zgd/project/run_dmft.jl",
+      "path": "/work/project/run_dmft.jl",
       "relpath": "run_dmft.jl",
       "sha256": "abc...",
       "size": 19342,
@@ -563,7 +563,7 @@ Example `file_manifest.json`:
       "copied": true
     },
     {
-      "path": "/home/zgd/project/src/solver.jl",
+      "path": "/work/project/src/solver.jl",
       "relpath": "src/solver.jl",
       "sha256": "def...",
       "size": 22103,
@@ -572,7 +572,7 @@ Example `file_manifest.json`:
       "copied": true
     },
     {
-      "path": "/home/zgd/project/results/output.jld2",
+      "path": "/work/project/results/output.jld2",
       "size": 8352931840,
       "role": "large_output_candidate",
       "source": "detected-path",

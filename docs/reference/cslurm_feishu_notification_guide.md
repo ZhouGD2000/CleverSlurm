@@ -633,8 +633,8 @@ Build a compact packet:
   },
   "runtime_commands": [
     {
-      "cwd": "/home/zgd/project/DMFT",
-      "executable": "/home/zgd/software/julia-1.11.5/bin/julia",
+      "cwd": "/work/project/DMFT",
+      "executable": "/opt/julia-1.11.5/bin/julia",
       "argv": "julia --project=. run_dmft.jl --U 4 --mixing broyden",
       "entry_file": "run_dmft.jl"
     }
