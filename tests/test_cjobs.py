@@ -65,6 +65,40 @@ def test_cjobs_events_files_and_commands_return_tables(isolated_home):
     assert "/bin/julia" in list_commands("123456")
 
 
+def test_cjobs_files_falls_back_to_copied_script_paths(isolated_home, tmp_path):
+    original = tmp_path / "job.slurm"
+    copied = tmp_path / "instrumented.slurm"
+    original.write_text("#!/bin/bash\nhostname\n")
+    copied.write_text("#!/bin/bash\nhostname\n")
+    with connect() as conn:
+        init_db(conn)
+        conn.execute(
+            "insert into jobs (job_id, original_script_path, copied_script_path, created_at, updated_at) "
+            "values ('123456', ?, ?, 't', 't')",
+            (str(original), str(copied)),
+        )
+
+    text = list_files("123456")
+
+    assert "original.slurm" in text
+    assert "instrumented.slurm" in text
+    assert str(original) in text
+    assert str(copied) in text
+
+
+def test_cjobs_empty_tables_return_explanatory_messages(isolated_home):
+    with connect() as conn:
+        init_db(conn)
+        conn.execute(
+            "insert into jobs (job_id, created_at, updated_at) values ('123456', 't', 't')"
+        )
+
+    assert list_files("123456") == "No files recorded for job 123456"
+    assert list_commands("123456") == "No runtime commands recorded for job 123456"
+    assert list_notifications("123456") == "No notifications recorded for job 123456"
+    assert list_notifications() == "No notifications recorded"
+
+
 def test_cjobs_notifications_returns_notification_rows(isolated_home):
     with connect() as conn:
         init_db(conn)
@@ -99,3 +133,19 @@ def test_cjobs_logs_tails_recorded_stdout_and_stderr(isolated_home, tmp_path):
     assert "out2\nout3" in text
     assert "== stderr ==" in text
     assert "err1\nerr2" in text
+
+
+def test_cjobs_logs_infers_default_slurm_output_when_paths_missing(isolated_home, tmp_path):
+    default_log = tmp_path / "slurm-123456.out"
+    default_log.write_text("line1\nline2\nline3\n")
+    with connect() as conn:
+        init_db(conn)
+        conn.execute(
+            "insert into jobs (job_id, submit_cwd, created_at, updated_at) values ('123456', ?, 't', 't')",
+            (str(tmp_path),),
+        )
+
+    text = show_logs("123456", tail=2)
+
+    assert "== stdout (inferred default slurm log) ==" in text
+    assert "line2\nline3" in text

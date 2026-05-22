@@ -1,3 +1,5 @@
+from pathlib import Path
+
 from cslurm.db import connect, init_db
 
 
@@ -69,6 +71,39 @@ def list_files(job_id: str, limit: int = 100) -> str:
             """,
             (job_id, limit),
         ).fetchall()
+        job = conn.execute(
+            "select original_script_path, copied_script_path from jobs where job_id = ?",
+            (job_id,),
+        ).fetchone()
+    if not rows and job:
+        fallback_rows = []
+        if job["original_script_path"]:
+            path = Path(job["original_script_path"])
+            fallback_rows.append(
+                {
+                    "relpath": "original.slurm",
+                    "role": "original_script",
+                    "source": "jobs",
+                    "size": path.stat().st_size if path.exists() else "",
+                    "copied": 0,
+                    "path": str(path),
+                }
+            )
+        if job["copied_script_path"]:
+            path = Path(job["copied_script_path"])
+            fallback_rows.append(
+                {
+                    "relpath": "instrumented.slurm",
+                    "role": "instrumented_script",
+                    "source": "jobs",
+                    "size": path.stat().st_size if path.exists() else "",
+                    "copied": 1,
+                    "path": str(path),
+                }
+            )
+        rows = fallback_rows
+    if not rows:
+        return f"No files recorded for job {job_id}"
     return "\n".join(
         f"{row['relpath'] or ''}\t{row['role'] or ''}\t{row['source'] or ''}\t{row['size'] or ''}\t{row['copied']}\t{row['path'] or ''}"
         for row in rows
@@ -88,6 +123,8 @@ def list_commands(job_id: str, limit: int = 100) -> str:
             """,
             (job_id, limit),
         ).fetchall()
+    if not rows:
+        return f"No runtime commands recorded for job {job_id}"
     return "\n".join(
         f"{row['time'] or ''}\t{row['hostname'] or ''}\t{row['cwd'] or ''}\t{row['kind'] or ''}\t{row['executable'] or ''}\t{row['argv'] or ''}\t{row['entry_file'] or ''}"
         for row in rows
@@ -118,6 +155,8 @@ def list_notifications(job_id: str | None = None, limit: int = 50) -> str:
                 """,
                 (limit,),
             ).fetchall()
+    if not rows:
+        return f"No notifications recorded for job {job_id}" if job_id else "No notifications recorded"
     return "\n".join(
         "\t".join(
             [
@@ -148,7 +187,7 @@ def show_logs(job_id: str, tail: int = 200) -> str:
     with connect() as conn:
         init_db(conn)
         row = conn.execute(
-            "select stdout_path, stderr_path from jobs where job_id = ?",
+            "select stdout_path, stderr_path, submit_cwd from jobs where job_id = ?",
             (job_id,),
         ).fetchone()
     if row is None:
@@ -159,6 +198,10 @@ def show_logs(job_id: str, tail: int = 200) -> str:
         sections.append("== stdout ==\n" + _tail_file(row["stdout_path"], tail))
     if row["stderr_path"]:
         sections.append("== stderr ==\n" + _tail_file(row["stderr_path"], tail))
+    if not sections and row["submit_cwd"]:
+        default_log = Path(row["submit_cwd"]) / f"slurm-{job_id}.out"
+        if default_log.exists():
+            sections.append("== stdout (inferred default slurm log) ==\n" + _tail_file(str(default_log), tail))
     if not sections:
         return f"No stdout/stderr paths recorded for job {job_id}"
     return "\n".join(sections)

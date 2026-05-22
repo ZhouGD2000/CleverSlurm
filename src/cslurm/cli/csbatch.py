@@ -132,6 +132,21 @@ def _resolve_sbatch_path(path_text: str | None, script_dir: Path, job_id: str) -
     return str(path.resolve())
 
 
+def _default_slurm_output_path(script_dir: Path, job_id: str) -> str:
+    return str((script_dir / f"slurm-{job_id}.out").resolve())
+
+
+def _record_copied_file(conn, *, job_id: str, path: Path, relpath: str, role: str) -> None:
+    size = path.stat().st_size if path.exists() else None
+    conn.execute(
+        """
+        insert into job_files (job_id, path, relpath, size, role, source, copied, confidence)
+        values (?, ?, ?, ?, ?, ?, ?, ?)
+        """,
+        (job_id, str(path), relpath, size, role, "csbatch", 1, 1.0),
+    )
+
+
 def _shell_single_quote(value: str) -> str:
     return "'" + value.replace("'", "'\"'\"'") + "'"
 
@@ -272,8 +287,10 @@ def submit_batch_result(argv: list[str]) -> BatchSubmission:
     (job_dir / "git_status.txt").write_text(git_meta.status)
     (job_dir / "git.diff").write_text(git_meta.diff)
     script_dir = script.parent if script is not None else Path.cwd()
-    stdout_path = _resolve_sbatch_path(_parse_sbatch_path(script_text, "output"), script_dir, job_id)
-    stderr_path = _resolve_sbatch_path(_parse_sbatch_path(script_text, "error"), script_dir, job_id)
+    stdout_path = _resolve_sbatch_path(_parse_sbatch_path(script_text, "output"), script_dir, job_id) or _default_slurm_output_path(
+        script_dir, job_id
+    )
+    stderr_path = _resolve_sbatch_path(_parse_sbatch_path(script_text, "error"), script_dir, job_id) or stdout_path
 
     with connect() as conn:
         init_db(conn)
@@ -308,6 +325,20 @@ def submit_batch_result(argv: list[str]) -> BatchSubmission:
             values (?, ?, ?, ?, ?, ?)
             """,
             (job_id, submitted_at, "SUBMITTED", command, os.getcwd(), result.stdout),
+        )
+        _record_copied_file(
+            conn,
+            job_id=job_id,
+            path=copied_original,
+            relpath="original.slurm",
+            role="original_script",
+        )
+        _record_copied_file(
+            conn,
+            job_id=job_id,
+            path=copied_instrumented,
+            relpath="instrumented.slurm",
+            role="instrumented_script",
         )
         conn.commit()
 

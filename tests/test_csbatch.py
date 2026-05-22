@@ -68,6 +68,44 @@ def test_csbatch_records_stdout_and_stderr_paths_with_job_id(isolated_home, fake
     assert row == (str(tmp_path / "logs" / "smoke-123456.out"), str(tmp_path / "logs" / "smoke-123456.err"))
 
 
+def test_csbatch_records_default_slurm_log_path_when_not_configured(isolated_home, fake_bin, tmp_path, monkeypatch):
+    _disable_auto_summary(monkeypatch)
+    write_executable(fake_bin / "sbatch", "#!/bin/sh\nprintf '123456\\n'\n")
+    script = tmp_path / "job.slurm"
+    script.write_text("#!/bin/bash\nhostname\n")
+
+    from cslurm.cli.csbatch import submit_batch
+
+    submit_batch([str(script)])
+
+    with sqlite3.connect(isolated_home / "db.sqlite") as conn:
+        row = conn.execute("select stdout_path, stderr_path from jobs where job_id = '123456'").fetchone()
+
+    default_log = str(tmp_path / "slurm-123456.out")
+    assert row == (default_log, default_log)
+
+
+def test_csbatch_records_copied_scripts_as_job_files(isolated_home, fake_bin, tmp_path, monkeypatch):
+    _disable_auto_summary(monkeypatch)
+    write_executable(fake_bin / "sbatch", "#!/bin/sh\nprintf '123456\\n'\n")
+    script = tmp_path / "job.slurm"
+    script.write_text("#!/bin/bash\nhostname\n")
+
+    from cslurm.cli.csbatch import submit_batch
+
+    submit_batch([str(script)])
+
+    with sqlite3.connect(isolated_home / "db.sqlite") as conn:
+        rows = conn.execute(
+            "select relpath, role, source, copied from job_files where job_id = '123456' order by relpath"
+        ).fetchall()
+
+    assert rows == [
+        ("instrumented.slurm", "instrumented_script", "csbatch", 1),
+        ("original.slurm", "original_script", "csbatch", 1),
+    ]
+
+
 def test_csbatch_passes_sbatch_options_and_script_args_to_real_sbatch(isolated_home, fake_bin, tmp_path, monkeypatch):
     _disable_auto_summary(monkeypatch)
     calls = tmp_path / "sbatch.calls"
