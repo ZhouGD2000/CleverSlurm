@@ -4,7 +4,7 @@ from typing import Any
 
 from cslurm.ai.client import ModelClient
 from cslurm.ai.json_utils import parse_json_object
-from cslurm.notify.analysis import build_notification_text, decide_notification
+from cslurm.notify.analysis import build_notification_text, decide_notification, log_paths_for_job
 
 
 ALLOWED_SEMANTIC_STATUSES = {
@@ -94,6 +94,10 @@ def build_compact_log_packet(conn, job_id: str, analysis: dict[str, Any]) -> dic
         "select cwd, executable, argv, entry_file from job_commands where job_id = ? order by id limit 20",
         (job_id,),
     ).fetchall()
+    log_paths = log_paths_for_job(conn, job_dict, job_id=job_id)
+    stdout_path = job_dict.get("stdout_path") or (log_paths[0] if log_paths else None)
+    stderr_path = job_dict.get("stderr_path")
+    extra_logs = [path for path in log_paths if path not in {stdout_path, stderr_path}]
     return {
         "job_id": job_id,
         "submission_summary": _json_or_none(job_dict.get("summary_json")),
@@ -105,8 +109,9 @@ def build_compact_log_packet(conn, job_id: str, analysis: dict[str, Any]) -> dic
             "max_rss": job_dict.get("max_rss"),
         },
         "runtime_commands": [{key: row[key] for key in row.keys()} for row in commands],
-        "stdout": _head_tail(job_dict.get("stdout_path")),
-        "stderr": _head_tail(job_dict.get("stderr_path")),
+        "stdout": _head_tail(stdout_path),
+        "stderr": _head_tail(stderr_path),
+        "inferred_logs": [_head_tail(path) for path in extra_logs[:4]],
         "matched_windows": (analysis.get("evidence") or {}).get("matched_windows", []),
         "deterministic_analysis": {
             "hard_failed": analysis.get("hard_failed"),

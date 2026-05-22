@@ -37,6 +37,29 @@ def test_shim_install_creates_real_sbatch_command_for_subprocess(tmp_path, monke
     assert result.stdout.strip() == f"csbatch:{real_bin / 'sbatch'}:job.slurm"
 
 
+def test_direct_csbatch_slurm_call_skips_managed_sbatch_shim(tmp_path, monkeypatch):
+    from cslurm import shims
+    from cslurm.slurm.commands import run_slurm_command
+
+    install_bin = tmp_path / "install-bin"
+    real_bin = tmp_path / "real-bin"
+    install_bin.mkdir()
+    real_bin.mkdir()
+    _write_executable(install_bin / "csbatch", "#!/bin/sh\nprintf 'shim-csbatch:%s\\n' \"$*\"\n")
+    _write_executable(install_bin / "csrun", "#!/bin/sh\nexit 0\n")
+    _write_executable(install_bin / "cscancel", "#!/bin/sh\nexit 0\n")
+    _write_executable(real_bin / "sbatch", "#!/bin/sh\nprintf 'real-sbatch:%s\\n' \"$*\"\n")
+    _write_executable(real_bin / "srun", "#!/bin/sh\nexit 0\n")
+    _write_executable(real_bin / "scancel", "#!/bin/sh\nexit 0\n")
+    monkeypatch.setenv("PATH", f"{install_bin}{os.pathsep}{real_bin}")
+    monkeypatch.delenv("CSLURM_SBATCH", raising=False)
+    shims.install(bin_dir=install_bin)
+
+    result = run_slurm_command("sbatch", ["--parsable", "job.slurm"])
+
+    assert result.stdout == "real-sbatch:--parsable job.slurm\n"
+
+
 def test_shim_install_refuses_unmanaged_existing_command(tmp_path, monkeypatch):
     from cslurm import shims
 

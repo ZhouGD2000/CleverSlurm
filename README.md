@@ -153,6 +153,8 @@ cshim status
 
 `alias sbatch=csbatch` only affects commands typed through an interactive shell. It does not affect Python code such as `subprocess.run(["sbatch", "job.slurm"])`, and it is usually not loaded for commands sent as `ssh host '...'`. `cshim install` creates user-level `sbatch`, `srun`, and `scancel` wrapper executables in the same directory as `csbatch`, so PATH lookup works for subprocesses too. The wrappers export `CSLURM_SBATCH`, `CSLURM_SRUN`, and `CSLURM_SCANCEL` to the original Slurm commands, then exec `csbatch`, `csrun`, or `cscancel`.
 
+When CleverSlurm itself calls Slurm, it skips its own managed shims and calls the real Slurm command found later in `PATH`. This prevents nested `csbatch -> sbatch shim -> csbatch` submissions.
+
 Remove only CleverSlurm-managed shims:
 
 ```bash
@@ -245,7 +247,7 @@ cnotify dispatch --mode all
 
 `cscancel` passes arguments to real `scancel` after removing CleverSlurm's optional `--note`. If you rename it to `scancel`, broad scancel commands keep their normal Slurm meaning; use the same caution you would use with real `scancel`.
 
-For batch jobs, CleverSlurm records submission immediately. The instrumented script also writes a runtime `PROGRAM_FINISHED` marker when the batch script exits. Run `ctrack` to ingest runtime markers and Slurm accounting state into SQLite. MATLAB/Python command detection is currently static and best-effort; it records obvious entry files and configured stdout/stderr paths, but it does not trace every file opened by the application or infer domain-specific output files.
+For batch jobs, CleverSlurm records submission immediately. The instrumented script also writes a runtime `PROGRAM_FINISHED` marker when the batch script exits. Run `ctrack` to ingest runtime markers and Slurm accounting state into SQLite. MATLAB/Python command detection is currently static and best-effort; it records obvious entry files and configured stdout/stderr paths, but it does not trace every file opened by the application or infer domain-specific output files. Notification analysis scans recorded stdout/stderr paths and also falls back to Slurm's default `slurm-<job_id>.out` under the submit directory for older records that do not have paths stored.
 
 ## Safety Notes
 

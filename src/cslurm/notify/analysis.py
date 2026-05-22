@@ -43,7 +43,7 @@ LOG_PATTERNS = [
         (r"boundserror", "LOG_ERROR_PATTERN", 0.8),
         (r"dimensionmismatch", "LOG_ERROR_PATTERN", 0.8),
         (r"methoderror", "LOG_ERROR_PATTERN", 0.78),
-        (r"error using", "LOG_ERROR_PATTERN", 0.78),
+        (r"error using", "LOG_ERROR_PATTERN", 0.9),
         (r"index exceeds", "LOG_ERROR_PATTERN", 0.78),
     ]
 ]
@@ -193,12 +193,43 @@ def _scan_file(path_text: str, *, context_lines: int = 3, max_matches: int = 20)
     return matches
 
 
-def scan_job_logs(row: dict[str, Any]) -> list[dict[str, Any]]:
+def log_paths_for_job(conn, row: dict[str, Any], job_id: str | None = None) -> list[str]:
+    job_id = str(job_id or row.get("job_id") or "")
+    paths: list[str] = []
+    seen = set()
+
+    def add(path_text: str | None) -> None:
+        if not path_text:
+            return
+        path = str(Path(path_text).expanduser())
+        if path in seen:
+            return
+        seen.add(path)
+        paths.append(path)
+
+    add(row.get("stdout_path"))
+    add(row.get("stderr_path"))
+    if job_id:
+        for file_row in conn.execute(
+            """
+            select path from job_files
+            where job_id = ? and role in ('stdout', 'stderr')
+            order by id
+            """,
+            (job_id,),
+        ).fetchall():
+            add(file_row["path"])
+
+    base_dir = row.get("effective_chdir") or row.get("submit_cwd")
+    if job_id and base_dir:
+        add(str(Path(base_dir).expanduser() / f"slurm-{job_id}.out"))
+    return paths
+
+
+def scan_job_logs(conn, row: dict[str, Any], job_id: str | None = None) -> list[dict[str, Any]]:
     matches = []
-    for key in ["stdout_path", "stderr_path"]:
-        path = row.get(key)
-        if path:
-            matches.extend(_scan_file(path))
+    for path in log_paths_for_job(conn, row, job_id=job_id):
+        matches.extend(_scan_file(path))
     return matches
 
 
@@ -274,12 +305,9 @@ def load_success_criteria(row: dict[str, Any]) -> dict[str, Any]:
         return {}
 
 
-def _combined_logs(row: dict[str, Any]) -> str:
+def _combined_logs(conn, row: dict[str, Any], job_id: str | None = None) -> str:
     chunks = []
-    for key in ["stdout_path", "stderr_path"]:
-        path_text = row.get(key)
-        if not path_text:
-            continue
+    for path_text in log_paths_for_job(conn, row, job_id=job_id):
         try:
             chunks.append(Path(path_text).expanduser().read_text(errors="replace"))
         except OSError:
@@ -287,7 +315,13 @@ def _combined_logs(row: dict[str, Any]) -> str:
     return "\n".join(chunks)
 
 
-def check_success_criteria(row: dict[str, Any], criteria: dict[str, Any]) -> list[dict[str, Any]]:
+def check_success_criteria(
+    row: dict[str, Any],
+    criteria: dict[str, Any],
+    *,
+    conn=None,
+    job_id: str | None = None,
+) -> list[dict[str, Any]]:
     if not criteria:
         return []
     failures: list[dict[str, Any]] = []
@@ -297,7 +331,7 @@ def check_success_criteria(row: dict[str, Any], criteria: dict[str, Any]) -> lis
         if not matches:
             failures.append({"check": "require_output_files", "pattern": str(pattern), "reason": "missing"})
 
-    logs = _combined_logs(row)
+    logs = _combined_logs(conn, row, job_id=job_id) if conn is not None else ""
     for needle in criteria.get("log_must_contain") or []:
         if str(needle) not in logs:
             failures.append({"check": "log_must_contain", "pattern": str(needle), "reason": "missing"})
@@ -368,8 +402,8 @@ def analyze_job(conn, job_id: str) -> dict[str, Any]:
     events = [{key: event[key] for key in event.keys()} for event in event_rows]
     state = normalize_state(row.get("state"))
     analysis = classify_deterministic(row, events)
-    matches = scan_job_logs(row)
-    criteria_failures = check_success_criteria(row, load_success_criteria(row))
+    matches = scan_job_logs(conn, row, job_id=job_id)
+    criteria_failures = check_success_criteria(row, load_success_criteria(row), conn=conn, job_id=job_id)
     semantic_status, semantic_category, confidence, semantic_severity = _semantic_from_matches(matches)
 
     if analysis["hard_failed"]:

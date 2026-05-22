@@ -110,6 +110,36 @@ def test_completed_log_converged_false_becomes_semantic_failed(isolated_home, tm
     assert "converged = false" in json.loads(row[2])["matched_windows"][0]["lines"][-1]
 
 
+def test_completed_matlab_error_in_default_slurm_log_becomes_immediate_failure(isolated_home, tmp_path):
+    from cslurm.db import connect, init_db
+    from cslurm.notify.analysis import analyze_job
+
+    stdout = tmp_path / "slurm-123456.out"
+    stdout.write_text(
+        "Starting MATLAB\n"
+        "clebsch.cc:7109      ERR SetupSym() for unknown [e=100]\n"
+        "Error using compactQS\n"
+        "Error in Dinf (line 75)\n"
+    )
+
+    with connect() as conn:
+        init_db(conn)
+        conn.execute(
+            "insert into jobs (job_id, state, exit_code, derived_exit_code, submit_cwd, created_at, updated_at) "
+            "values ('123456', 'COMPLETED', '0:0', '0:0', ?, 't', 't')",
+            (str(tmp_path),),
+        )
+        analysis = analyze_job(conn, "123456")
+
+    assert analysis["hard_failed"] is False
+    assert analysis["semantic_status"] == "semantic_failed"
+    assert analysis["failure_category"] == "LOG_ERROR_PATTERN"
+    assert analysis["severity"] == "medium"
+    assert analysis["recommended_notification"] == "immediate"
+    assert analysis["evidence"]["matched_windows"][0]["file"] == str(stdout)
+    assert "Error using compactQS" in "\n".join(analysis["evidence"]["matched_windows"][0]["lines"])
+
+
 def test_completed_job_missing_required_output_file_fails_success_criteria(isolated_home, tmp_path, monkeypatch):
     from cslurm.db import connect, init_db
     from cslurm.notify.analysis import analyze_job

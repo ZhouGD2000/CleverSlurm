@@ -51,6 +51,8 @@ cshim status
 
 This installs user-level `sbatch`, `srun`, and `scancel` wrapper executables in the same directory as `csbatch`. That directory must appear before the system Slurm directory in `PATH`; otherwise subprocesses will still find the real Slurm command first.
 
+CleverSlurm-managed calls to Slurm skip these managed shims and use the real Slurm command later in `PATH`, so a direct `csbatch` invocation does not recursively call the `sbatch` shim.
+
 If you manage more than one Python environment, or if `cshim status` shows that the active command is not the wrapper you expect, specify the target scripts directory explicitly:
 
 ```bash
@@ -327,6 +329,8 @@ secret = "..."
 The `*_env` fields are environment variable names. Direct values are supported for convenience, but environment variables are safer for shared repositories and shell histories.
 
 `ctrack` records a `job_analysis` row and a `notifications` row when a job reaches a terminal Slurm state. Hard failures, nonzero `ExitCode`, and nonzero `DerivedExitCode` are immediate notifications. Normal completions and user cancellations are grouped into batch or digest summary cards after `batch_window_minutes`.
+
+Semantic log checks read recorded stdout/stderr paths. For older records where those columns were not stored, CleverSlurm also checks the default Slurm output path `submit_cwd/slurm-<job_id>.out`. Log patterns such as Python tracebacks, MATLAB `Error using ...`, OOM text, non-convergence markers, and numerical instability markers can upgrade a Slurm `COMPLETED 0:0` job to a semantic failure notification.
 
 If many immediate notifications are pending at once, CleverSlurm groups them into summary cards once the count reaches `immediate_group_threshold` instead of sending one Feishu message per job. The default threshold is `10`; set it to `1` to always group immediate notifications, or higher to keep small bursts as individual cards:
 
