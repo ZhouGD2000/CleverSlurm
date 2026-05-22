@@ -1,3 +1,4 @@
+import json
 from pathlib import Path
 
 from cslurm.db import connect, init_db
@@ -16,6 +17,25 @@ def show_job(job_id: str) -> str:
         if value is not None:
             lines.append(f"{key}: {value}")
     return "\n".join(lines)
+
+
+def show_summary(job_id: str, *, completion: bool = False) -> str:
+    column = "completion_summary_json" if completion else "summary_json"
+    label = "completion" if completion else "submission"
+    with connect() as conn:
+        init_db(conn)
+        row = conn.execute(f"select {column} from jobs where job_id = ?", (job_id,)).fetchone()
+    if row is None:
+        raise KeyError(f"job not found: {job_id}")
+
+    value = row[column]
+    if not value:
+        return f"No {label} summary recorded for job {job_id}"
+    try:
+        parsed = json.loads(value)
+    except json.JSONDecodeError:
+        return value
+    return json.dumps(parsed, ensure_ascii=False, indent=2, sort_keys=True)
 
 
 def recent_jobs(limit: int = 10) -> str:
@@ -215,6 +235,9 @@ def main() -> None:
     subparsers = parser.add_subparsers(dest="command", required=True)
     show = subparsers.add_parser("show")
     show.add_argument("job_id")
+    summary = subparsers.add_parser("summary")
+    summary.add_argument("job_id")
+    summary.add_argument("--completion", action="store_true")
     recent = subparsers.add_parser("recent")
     recent.add_argument("-n", "--limit", type=int, default=10)
     events = subparsers.add_parser("events")
@@ -239,6 +262,8 @@ def main() -> None:
 
     if args.command == "show":
         print(show_job(args.job_id))
+    elif args.command == "summary":
+        print(show_summary(args.job_id, completion=args.completion))
     elif args.command == "recent":
         print(recent_jobs(args.limit))
     elif args.command == "events":

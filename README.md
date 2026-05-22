@@ -184,6 +184,8 @@ cjobs files 46644
 cjobs commands 46644
 cjobs logs 46644 --tail 100
 cjobs notifications 46644
+cjobs summary 46644
+cjobs summary 46644 --completion
 cjobs ask "最近完成了什么任务？都是些什么工作？"
 ```
 
@@ -199,6 +201,8 @@ Summarize a job with AI:
 csummarize 46644
 csummarize 46644 --completion
 ```
+
+`cjobs summary` only reads existing stored summaries. `csummarize` sends a new AI request and updates the stored summary. Without `--completion`, both commands use the submission summary (`summary_json`); with `--completion`, they use the completion summary (`completion_summary_json`).
 
 Temporarily override the AI model:
 

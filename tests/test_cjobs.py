@@ -1,8 +1,17 @@
+import json
 import subprocess
 import sys
 
 from cslurm.db import connect, init_db
-from cslurm.cli.cjobs import list_commands, list_events, list_files, list_notifications, show_job, show_logs
+from cslurm.cli.cjobs import (
+    list_commands,
+    list_events,
+    list_files,
+    list_notifications,
+    show_job,
+    show_logs,
+    show_summary,
+)
 
 
 def test_cjobs_show_returns_job_metadata(isolated_home):
@@ -39,6 +48,61 @@ def test_cjobs_module_entrypoint_runs_main(isolated_home):
 
     assert "Job 123456" in result.stdout
     assert "state: COMPLETED" in result.stdout
+
+
+def test_cjobs_summary_reads_stored_submission_summary_without_ai(isolated_home):
+    with connect() as conn:
+        init_db(conn)
+        conn.execute(
+            "insert into jobs (job_id, summary_json, created_at, updated_at) values ('123456', ?, 't', 't')",
+            (json.dumps({"job_id": "123456", "one_line_summary": "Run a smoke job."}),),
+        )
+
+    text = show_summary("123456")
+
+    assert '"one_line_summary": "Run a smoke job."' in text
+    assert '"job_id": "123456"' in text
+
+
+def test_cjobs_summary_reads_stored_completion_summary(isolated_home):
+    with connect() as conn:
+        init_db(conn)
+        conn.execute(
+            "insert into jobs (job_id, completion_summary_json, created_at, updated_at) values ('123456', ?, 't', 't')",
+            (json.dumps({"job_id": "123456", "completion_status": "COMPLETED"}),),
+        )
+
+    text = show_summary("123456", completion=True)
+
+    assert '"completion_status": "COMPLETED"' in text
+
+
+def test_cjobs_summary_reports_missing_summary(isolated_home):
+    with connect() as conn:
+        init_db(conn)
+        conn.execute("insert into jobs (job_id, created_at, updated_at) values ('123456', 't', 't')")
+
+    assert show_summary("123456") == "No submission summary recorded for job 123456"
+    assert show_summary("123456", completion=True) == "No completion summary recorded for job 123456"
+
+
+def test_cjobs_summary_cli_supports_completion_flag(isolated_home):
+    with connect() as conn:
+        init_db(conn)
+        conn.execute(
+            "insert into jobs (job_id, completion_summary_json, created_at, updated_at) values ('123456', ?, 't', 't')",
+            (json.dumps({"completion_status": "FAILED"}),),
+        )
+
+    result = subprocess.run(
+        [sys.executable, "-m", "cslurm.cli.cjobs", "summary", "123456", "--completion"],
+        text=True,
+        stdout=subprocess.PIPE,
+        stderr=subprocess.PIPE,
+        check=True,
+    )
+
+    assert '"completion_status": "FAILED"' in result.stdout
 
 
 def test_cjobs_events_files_and_commands_return_tables(isolated_home):

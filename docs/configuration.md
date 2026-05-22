@@ -225,6 +225,22 @@ cjobs ask "最近完成了什么任务？都是些什么工作？"
 
 `csbatch` queues a submission summary in a detached background worker after it records a successful submission, so the submit command does not wait for the model request. The queue event is recorded as `AI_SUMMARY_QUEUED`; worker success records `AI_SUMMARY_CREATED`, and worker failure records `AI_SUMMARY_FAILED`. Worker stdout/stderr is written to `~/.cslurm/jobs/<job_id>/auto_summary.log`. Disable automatic summaries when needed:
 
+Read stored summaries without making a new AI request:
+
+```bash
+cjobs summary 46644
+cjobs summary 46644 --completion
+```
+
+Generate or refresh summaries with a new AI request:
+
+```bash
+csummarize 46644
+csummarize 46644 --completion
+```
+
+Without `--completion`, commands use the submission summary stored in `summary_json`. With `--completion`, they use the completion summary stored in `completion_summary_json`.
+
 ```bash
 export CSLURM_AI_AUTO_SUMMARY=false
 ```
