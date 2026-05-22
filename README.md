@@ -22,22 +22,55 @@ From the repository root:
 
 ```bash
 python3 -m pip install -e .
+command -v csbatch cjobs ctrack cshim
 ```
 
-Installation does not start automatic tracking. Enable it explicitly after install when you want CleverSlurm to refresh job state and dispatch Feishu notifications from cron:
+Use the same `python3` environment for install, runtime, and uninstall. `pip install -e .` installs console scripts into that environment's scripts directory, such as `csbatch`, `cjobs`, `ctrack`, and `cshim`.
+
+Installation does not start automatic tracking. Enable it explicitly after install when you want CleverSlurm to refresh job state and dispatch Feishu notifications from cron. For a normal installed environment:
 
 ```bash
 ctrack auto on
 ```
 
+For source checkouts, cron, or hosts with multiple Python environments, specify the repository and Python executable explicitly so cron does not depend on its working directory or a different default `python3`:
+
+```bash
+ctrack auto on --repo /path/to/cleverslurm --python /path/to/python3
+ctrack auto status
+```
+
+If you want scripts that call `sbatch`, `srun`, or `scancel` by their Slurm names to be tracked, install command shims after the package install:
+
+```bash
+cshim install
+cshim status
+```
+
+If the default scripts directory is not the one that appears first in `PATH`, specify it explicitly and use the same value for status and removal:
+
+```bash
+cshim install --bin-dir /path/to/env/bin
+cshim status --bin-dir /path/to/env/bin
+```
+
 Uninstall the editable package and console scripts:
 
 ```bash
+cshim remove
 ctrack auto off
 python3 -m pip uninstall CleverSlurm
 ```
 
-Run `ctrack auto off` before uninstalling because `pip uninstall` does not run a CleverSlurm cleanup hook. If the managed cron entry is left behind, it checks whether `cslurm` is still importable before every tracker run; if not, it removes only the marked CleverSlurm block from the user's crontab and exits. In source mode, the source tree passed with `--repo` still counts as importable code while it remains on disk. The uninstall command removes the installed Python package entry and command wrappers such as `csbatch`, `csrun`, `cjobs`, and `cnotify` from that Python environment. It does not remove runtime data or config under `~/.cslurm/`. Remove that directory separately only when you intentionally want to delete the local job database, copied scripts, logs, and secrets/config.
+If shims were installed with an explicit directory, remove them with the same directory before uninstalling:
+
+```bash
+cshim remove --bin-dir /path/to/env/bin
+ctrack auto off
+python3 -m pip uninstall CleverSlurm
+```
+
+Run `cshim remove` and `ctrack auto off` before uninstalling because `pip uninstall` does not run CleverSlurm cleanup hooks. `cshim remove` only deletes wrappers that contain the CleverSlurm-managed marker. If the managed cron entry is left behind, it checks whether `cslurm` is still importable before every tracker run; if not, it removes only the marked CleverSlurm block from the user's crontab and exits. In source mode, the source tree passed with `--repo` still counts as importable code while it remains on disk. The uninstall command removes the installed Python package entry and command wrappers such as `csbatch`, `csrun`, `cjobs`, and `cnotify` from that Python environment. It does not remove runtime data or config under `~/.cslurm/`. Remove that directory separately only when you intentionally want to delete the local job database, copied scripts, logs, and secrets/config.
 
 For development without installing console scripts, run with `PYTHONPATH=src`:
 

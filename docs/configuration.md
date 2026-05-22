@@ -40,6 +40,59 @@ export CSLURM_SCANCEL=/usr/bin/scancel
 
 These overrides are also how tests inject fake Slurm commands.
 
+## Command Shims
+
+Use `cshim` when existing scripts, Python code, or workflow tools call Slurm command names directly:
+
+```bash
+cshim install
+cshim status
+```
+
+This installs user-level `sbatch`, `srun`, and `scancel` wrapper executables in the same directory as `csbatch`. That directory must appear before the system Slurm directory in `PATH`; otherwise subprocesses will still find the real Slurm command first.
+
+If you manage more than one Python environment, or if `cshim status` shows that the active command is not the wrapper you expect, specify the target scripts directory explicitly:
+
+```bash
+cshim install --bin-dir /path/to/env/bin
+cshim status --bin-dir /path/to/env/bin
+```
+
+Use the same `--bin-dir` when removing shims:
+
+```bash
+cshim remove --bin-dir /path/to/env/bin
+```
+
+Remove shims before `python3 -m pip uninstall CleverSlurm`. After uninstall, the `cshim` command may no longer exist in that Python environment. `cshim remove` only deletes files with the CleverSlurm-managed marker, so it will not remove an unrelated user or system `sbatch`.
+
+Do not use `cshim install --force` unless you have checked the target files and intentionally want to overwrite unmanaged `sbatch`, `srun`, or `scancel` files in the chosen directory.
+
+## Automatic Tracking Cron
+
+Automatic tracking is opt-in:
+
+```bash
+ctrack auto on
+ctrack auto status
+```
+
+If CleverSlurm is installed into a stable Python environment and `ctrack` is already on `PATH`, the short form is usually enough. For source checkouts, cron jobs, or hosts with multiple Python environments, specify the repository and Python executable explicitly:
+
+```bash
+ctrack auto on --repo /path/to/cleverslurm --python /path/to/python3
+ctrack auto status
+```
+
+Use `ctrack auto off` before uninstalling CleverSlurm:
+
+```bash
+ctrack auto off
+python3 -m pip uninstall CleverSlurm
+```
+
+The generated cron command self-checks whether `cslurm` can still be imported. If the package or source checkout is gone, it removes only the marked CleverSlurm cron block and exits. Still, explicit `ctrack auto off` is preferred because `pip uninstall` does not run a cleanup hook.
+
 ## AI Settings
 
 Environment variables:
