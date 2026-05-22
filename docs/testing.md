@@ -20,13 +20,14 @@ The tests cover:
 - basic `sbatch --wrap` translation
 - batch program-finished marker ingestion
 - stdout/stderr path parsing
+- background static MATLAB/Python submission analysis
 - git commit/status/diff capture
 - fake `srun` execution through `csrun`
 - `csrun` CLI stdout/stderr and exit-code forwarding
 - fake `scancel` event recording
 - scancel option passthrough with CleverSlurm-only `--note`
 - fake `sacct` tracker updates, including no-header `sacct -n` output
-- runtime `commands.log` ingestion
+- optional runtime `commands.log` ingestion
 - `cjobs` details, events, files, commands, and logs
 - `cjobs ask` with a fake AI client over recent job facts
 - Julia static `include(...)` parsing

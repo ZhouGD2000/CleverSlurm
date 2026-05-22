@@ -195,6 +195,13 @@ def ai_auto_summary_enabled() -> bool:
     return value.lower() in {"1", "true", "yes", "on"}
 
 
+def static_analysis_enabled() -> bool:
+    value = _env("CSLURM_STATIC_ANALYSIS") or load_config().get("tracking", {}).get("static_analysis")
+    if value is None:
+        return True
+    return value.lower() in {"1", "true", "yes", "on"}
+
+
 def _bool_config(env_name: str, section: str, key: str, default: bool) -> bool:
     value = _env(env_name) or load_config().get(section, {}).get(key)
     if value is None:

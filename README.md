@@ -10,10 +10,11 @@ The design rule is simple: deterministic code records facts; AI only summarizes 
 - `csrun`: wraps direct `srun` execution, passes stdout/stderr through in CLI mode, and records a standalone local job record when outside an existing allocation.
 - `cscancel`: wraps `scancel`, passes through scancel options, and records a cancellation request event with an optional CleverSlurm-only `--note`.
 - `ctrack`: polls `sacct` for known jobs and updates state, exit code, derived exit code, elapsed time, memory, and node list.
-- `cjobs`: queries recent jobs, job details, events, files, runtime commands, log tails, and AI answers over recent job facts.
+- `cjobs`: queries recent jobs, job details, events, files, recorded commands, log tails, and AI answers over recent job facts.
 - `csummarize`: sends curated job facts to a configured OpenAI-compatible or Anthropic-compatible model API and stores structured AI summaries.
 - Feishu notifications: when `ctrack` sees a terminal job state, it records deterministic/semantic analysis, queues a notification, and immediately sends hard failures through a Feishu/Lark custom bot when configured.
-- Runtime command ingestion: imports JSONL records from `commands.log` into `job_commands`.
+- Static script analysis: after `csbatch`, a detached worker identifies obvious MATLAB and Python entry commands and records their entry files without wrapping the runtime process.
+- Runtime command ingestion: imports JSONL records from `commands.log` into `job_commands` when such logs are produced externally.
 - Local fake-Slurm tests: the test suite does not require Slurm.
 
 ## Install
@@ -119,6 +120,9 @@ secret_env = "CSLURM_FEISHU_SECRET"
 message_format = "card"
 batch_window_minutes = "30"
 immediate_group_threshold = "10"
+
+[tracking]
+static_analysis = "true"
 ```
 
 Do not commit API keys. Put them in environment variables such as `DEEPSEEK_API_KEY` or `KIMI_API_KEY`.
@@ -156,6 +160,8 @@ cshim remove
 ```
 
 After a successful submission, `csbatch` queues the AI submission summary in a detached background worker and returns immediately. `cjobs events <job_id>` first shows `AI_SUMMARY_QUEUED`; when the worker finishes it records `AI_SUMMARY_CREATED` and stores `summary_json`, or records `AI_SUMMARY_FAILED` if the request fails. Worker stdout/stderr goes to `~/.cslurm/jobs/<job_id>/auto_summary.log`.
+
+`csbatch` also queues static script analysis in a detached worker and returns immediately. The worker reads the copied submission script from `~/.cslurm/jobs/<job_id>/original.slurm`, recognizes common MATLAB and Python entry forms such as `$EXE -r Dinf`, `matlab -batch Dinf`, `$PY run.py`, and `srun python3 train.py`, then records rows visible through `cjobs commands <job_id>` and `cjobs files <job_id>`. It does not inject Python/MATLAB runtime wrappers or prepend `~/.cslurm/wrappers` to the batch job's `PATH`, so it should not change application process startup performance. Worker stdout/stderr goes to `~/.cslurm/jobs/<job_id>/static_analysis.log`.
 
 Track known jobs:
 
@@ -239,7 +245,7 @@ cnotify dispatch --mode all
 
 `cscancel` passes arguments to real `scancel` after removing CleverSlurm's optional `--note`. If you rename it to `scancel`, broad scancel commands keep their normal Slurm meaning; use the same caution you would use with real `scancel`.
 
-For batch jobs, CleverSlurm records submission immediately. The instrumented script also writes a runtime `PROGRAM_FINISHED` marker when the batch script exits. Run `ctrack` to ingest runtime markers and Slurm accounting state into SQLite.
+For batch jobs, CleverSlurm records submission immediately. The instrumented script also writes a runtime `PROGRAM_FINISHED` marker when the batch script exits. Run `ctrack` to ingest runtime markers and Slurm accounting state into SQLite. MATLAB/Python command detection is currently static and best-effort; it records obvious entry files and configured stdout/stderr paths, but it does not trace every file opened by the application or infer domain-specific output files.
 
 ## Safety Notes
 
@@ -257,6 +263,6 @@ python3 -m pytest -q
 python3 -m compileall -q src/cslurm
 ```
 
-The current suite covers fake `sbatch`, fake `srun`, fake `sacct`, fake `scancel`, SQLite writes, runtime command ingestion, Julia include parsing, snapshots, AI request construction, AI question answering over job facts, notification analysis, Feishu immediate and grouped dispatch with fake HTTP, and query CLI helpers.
+The current suite covers fake `sbatch`, fake `srun`, fake `sacct`, fake `scancel`, SQLite writes, static MATLAB/Python submission analysis, runtime command ingestion, Julia include parsing, snapshots, AI request construction, AI question answering over job facts, notification analysis, Feishu immediate and grouped dispatch with fake HTTP, and query CLI helpers.
 
 See [docs/testing.md](docs/testing.md), [docs/configuration.md](docs/configuration.md), [docs/notifications.md](docs/notifications.md), and [docs/feishu_setup.md](docs/feishu_setup.md).

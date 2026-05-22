@@ -135,7 +135,7 @@ def list_commands(job_id: str, limit: int = 100) -> str:
         init_db(conn)
         rows = conn.execute(
             """
-            select time, hostname, cwd, kind, executable, argv, entry_file
+            select time, hostname, cwd, kind, executable, argv, entry_file, source
             from job_commands
             where job_id = ?
             order by id
@@ -144,9 +144,9 @@ def list_commands(job_id: str, limit: int = 100) -> str:
             (job_id, limit),
         ).fetchall()
     if not rows:
-        return f"No runtime commands recorded for job {job_id}"
+        return f"No commands recorded for job {job_id}"
     return "\n".join(
-        f"{row['time'] or ''}\t{row['hostname'] or ''}\t{row['cwd'] or ''}\t{row['kind'] or ''}\t{row['executable'] or ''}\t{row['argv'] or ''}\t{row['entry_file'] or ''}"
+        f"{row['time'] or ''}\t{row['hostname'] or ''}\t{row['cwd'] or ''}\t{row['kind'] or ''}\t{row['executable'] or ''}\t{row['argv'] or ''}\t{row['entry_file'] or ''}\t{row['source'] or ''}"
         for row in rows
     )
 

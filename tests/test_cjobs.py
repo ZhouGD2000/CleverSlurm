@@ -127,6 +127,7 @@ def test_cjobs_events_files_and_commands_return_tables(isolated_home):
     assert "entry_file" in list_files("123456")
     assert "julia" in list_commands("123456")
     assert "/bin/julia" in list_commands("123456")
+    assert "runtime-wrapper" in list_commands("123456")
 
 
 def test_cjobs_files_falls_back_to_copied_script_paths(isolated_home, tmp_path):
@@ -158,7 +159,7 @@ def test_cjobs_empty_tables_return_explanatory_messages(isolated_home):
         )
 
     assert list_files("123456") == "No files recorded for job 123456"
-    assert list_commands("123456") == "No runtime commands recorded for job 123456"
+    assert list_commands("123456") == "No commands recorded for job 123456"
     assert list_notifications("123456") == "No notifications recorded for job 123456"
     assert list_notifications() == "No notifications recorded"
 

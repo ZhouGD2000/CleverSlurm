@@ -7,6 +7,7 @@ from conftest import write_executable
 
 def _disable_auto_summary(monkeypatch):
     monkeypatch.setenv("CSLURM_AI_AUTO_SUMMARY", "false")
+    monkeypatch.setenv("CSLURM_STATIC_ANALYSIS", "false")
 
 
 def test_csbatch_records_fake_sbatch_job_id_and_copies_scripts(isolated_home, fake_bin, tmp_path, monkeypatch):
@@ -181,6 +182,7 @@ def test_csbatch_instrumented_script_records_program_finish(isolated_home, fake_
     assert "CSLURM_ROOT=" in instrumented
     assert "finish.log" in instrumented
     assert "PROGRAM_FINISHED" in instrumented
+    assert "$CSLURM_ROOT/wrappers" not in instrumented
 
 
 def test_csbatch_module_entrypoint_runs_main(isolated_home, fake_bin, tmp_path, monkeypatch):
@@ -218,6 +220,7 @@ def test_csbatch_module_entrypoint_preserves_parsable_output(isolated_home, fake
 
 
 def test_csbatch_queues_submission_summary_after_recording_job(isolated_home, fake_bin, tmp_path, monkeypatch):
+    monkeypatch.setenv("CSLURM_STATIC_ANALYSIS", "false")
     write_executable(fake_bin / "sbatch", "#!/bin/sh\nprintf '123456\\n'\n")
     script = tmp_path / "job.slurm"
     script.write_text("#!/bin/bash\nhostname\n")
@@ -248,6 +251,7 @@ def test_csbatch_queues_submission_summary_after_recording_job(isolated_home, fa
 
 
 def test_csbatch_records_summary_queue_failure_without_breaking_submission(isolated_home, fake_bin, tmp_path, monkeypatch):
+    monkeypatch.setenv("CSLURM_STATIC_ANALYSIS", "false")
     write_executable(fake_bin / "sbatch", "#!/bin/sh\nprintf '123456\\n'\n")
     script = tmp_path / "job.slurm"
     script.write_text("#!/bin/bash\nhostname\n")
@@ -297,6 +301,61 @@ def test_launch_auto_summary_starts_detached_worker(isolated_home, monkeypatch):
     assert launched[0][0][-3:] == ["-m", "cslurm.ai.auto", "123456"]
     assert launched[0][1]["start_new_session"] is True
     assert event == ("AI_SUMMARY_QUEUED", "pid=888")
+
+
+def test_csbatch_queues_static_analysis_after_recording_job(isolated_home, fake_bin, tmp_path, monkeypatch):
+    monkeypatch.setenv("CSLURM_AI_AUTO_SUMMARY", "false")
+    write_executable(fake_bin / "sbatch", "#!/bin/sh\nprintf '123456\\n'\n")
+    script = tmp_path / "job.slurm"
+    script.write_text("#!/bin/bash\npython run.py\n")
+    launched = []
+
+    def fake_launch(job_id):
+        from cslurm.collect.static_auto import record_static_analysis_queued
+
+        launched.append(job_id)
+        record_static_analysis_queued(job_id, pid=999)
+        return "queued"
+
+    monkeypatch.setattr("cslurm.cli.csbatch.launch_static_analysis", fake_launch)
+
+    from cslurm.cli.csbatch import submit_batch
+
+    submit_batch([str(script)])
+
+    assert launched == ["123456"]
+    with sqlite3.connect(isolated_home / "db.sqlite") as conn:
+        events = conn.execute(
+            "select event_type, raw_output from job_events where job_id = '123456' order by id"
+        ).fetchall()
+
+    assert events == [("SUBMITTED", "123456\n"), ("STATIC_ANALYSIS_QUEUED", "pid=999")]
+
+
+def test_launch_static_analysis_starts_detached_worker(isolated_home, monkeypatch):
+    from cslurm.cli.csbatch import launch_static_analysis
+
+    launched = []
+
+    class FakeProcess:
+        pid = 889
+
+    def fake_popen(argv, **kwargs):
+        launched.append((argv, kwargs))
+        return FakeProcess()
+
+    monkeypatch.setattr("cslurm.cli.csbatch.subprocess.Popen", fake_popen)
+
+    assert launch_static_analysis("123456") == "queued"
+
+    with sqlite3.connect(isolated_home / "db.sqlite") as conn:
+        event = conn.execute(
+            "select event_type, raw_output from job_events where job_id = '123456'"
+        ).fetchone()
+
+    assert launched[0][0][-3:] == ["-m", "cslurm.collect.static_auto", "123456"]
+    assert launched[0][1]["start_new_session"] is True
+    assert event == ("STATIC_ANALYSIS_QUEUED", "pid=889")
 
 
 def test_background_auto_summary_worker_records_created_summary(isolated_home, monkeypatch):

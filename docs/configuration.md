@@ -223,7 +223,7 @@ cjobs ask "最近完成了什么任务？都是些什么工作？"
 
 `cjobs ask` builds a JSON context from recent SQLite job records, then asks the configured model to answer from that context only. It does not require a JSON response and will print local recorded facts if the AI provider is unavailable or too slow.
 
-`csbatch` queues a submission summary in a detached background worker after it records a successful submission, so the submit command does not wait for the model request. The queue event is recorded as `AI_SUMMARY_QUEUED`; worker success records `AI_SUMMARY_CREATED`, and worker failure records `AI_SUMMARY_FAILED`. Worker stdout/stderr is written to `~/.cslurm/jobs/<job_id>/auto_summary.log`. Disable automatic summaries when needed:
+`csbatch` queues a submission summary in a detached background worker after it records a successful submission, so the submit command does not wait for the model request. The queue event is recorded as `AI_SUMMARY_QUEUED`; worker success records `AI_SUMMARY_CREATED`, and worker failure records `AI_SUMMARY_FAILED`. Worker stdout/stderr is written to `~/.cslurm/jobs/<job_id>/auto_summary.log`.
 
 Read stored summaries without making a new AI request:
 
@@ -241,6 +241,8 @@ csummarize 46644 --completion
 
 Without `--completion`, commands use the submission summary stored in `summary_json`. With `--completion`, they use the completion summary stored in `completion_summary_json`.
 
+Disable automatic summaries when needed:
+
 ```bash
 export CSLURM_AI_AUTO_SUMMARY=false
 ```
@@ -250,6 +252,41 @@ or:
 ```toml
 [ai]
 auto_summary = "false"
+```
+
+## Static Submission Analysis
+
+`csbatch` queues static script analysis in a detached background worker after it records a successful submission. This keeps batch submissions fast even when many jobs are submitted in a loop. The queue event is `STATIC_ANALYSIS_QUEUED`; worker success records `STATIC_ANALYSIS_CREATED`, and worker failure records `STATIC_ANALYSIS_FAILED`. Worker stdout/stderr is written to:
+
+```text
+~/.cslurm/jobs/<job_id>/static_analysis.log
+```
+
+The analyzer reads the copied submission script and records best-effort MATLAB/Python entry commands into `job_commands`. It recognizes common forms such as:
+
+```bash
+EXE=/home/software/MATLAB/R2022b/bin/matlab
+$EXE -nodisplay -r Dinf;exit;
+
+PY=/usr/bin/python3
+$PY run.py --alpha 1
+
+srun --gres=gpu:1 python3 train.py
+```
+
+Entry files such as `Dinf.m`, `run.py`, and `train.py` are recorded in `job_files` with source `static-script`. Known stdout/stderr paths are recorded with source `sbatch`. Static analysis does not prepend `~/.cslurm/wrappers` to the batch job's `PATH`, does not wrap Python or MATLAB, and does not trace every file the application opens at runtime.
+
+Disable the background analyzer when needed:
+
+```bash
+export CSLURM_STATIC_ANALYSIS=false
+```
+
+or:
+
+```toml
+[tracking]
+static_analysis = "false"
 ```
 
 ## Feishu Notifications
