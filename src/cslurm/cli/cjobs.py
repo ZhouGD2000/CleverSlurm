@@ -30,6 +30,20 @@ SQUEUE_STATE_CODES = {
     "UNKNOWN": "UN",
 }
 
+QUEUE_TERMINAL_STATES = {
+    "BOOT_FAIL",
+    "CANCELLED",
+    "COMPLETED",
+    "DEADLINE",
+    "FAILED",
+    "NODE_FAIL",
+    "OUT_OF_MEMORY",
+    "PREEMPTED",
+    "REVOKED",
+    "SPECIAL_EXIT",
+    "TIMEOUT",
+}
+
 
 def show_job(job_id: str) -> str:
     with connect() as conn:
@@ -147,18 +161,65 @@ def _squeue_row(row) -> str:
     ).rstrip()
 
 
+def _sacct_header() -> str:
+    return (
+        f"{'JobID':>18} {'JobName':<18} {'Partition':<10} {'Account':<10} "
+        f"{'State':<12} {'ExitCode':<8} {'Elapsed':>10} {'MaxRSS':>8} "
+        f"{'NodeList':<14} Submit"
+    )
+
+
+def _sacct_row(row) -> str:
+    partition = row["partition"] or _fallback_sbatch_value(row, "partition", "-p") or ""
+    job_name = row["job_name"] or _fallback_sbatch_value(row, "job-name", "-J") or ""
+    account = row["account"] or _fallback_sbatch_value(row, "account", "-A") or ""
+    return (
+        f"{str(row['job_id'] or ''):>18} "
+        f"{_fit(job_name, 18):<18} "
+        f"{_fit(partition, 10):<10} "
+        f"{_fit(account, 10):<10} "
+        f"{_fit(row['state'] or 'UNKNOWN', 12):<12} "
+        f"{_fit(row['exit_code'] or '', 8):<8} "
+        f"{_fit(row['elapsed'] or '', 10):>10} "
+        f"{_fit(row['max_rss'] or '', 8):>8} "
+        f"{_fit(row['nodelist'] or '', 14):<14} "
+        f"{row['submitted_at'] or ''}"
+    ).rstrip()
+
+
 def recent_jobs(limit: int = 10, *, no_header: bool = False) -> str:
     with connect() as conn:
         init_db(conn)
         rows = conn.execute(
             """
-            select job_id, partition, job_name, user, state, elapsed, nodes, nodelist, reason,
+            select job_id, job_name, partition, account, state, exit_code, elapsed,
+                   max_rss, nodelist, submitted_at,
                    original_script_path, copied_script_path, command
             from jobs
             order by submitted_at desc
             limit ?
             """,
             (limit,),
+        ).fetchall()
+    lines = [] if no_header else [_sacct_header()]
+    lines.extend(_sacct_row(row) for row in rows)
+    return "\n".join(lines)
+
+
+def queue_jobs(limit: int = 10, *, no_header: bool = False) -> str:
+    placeholders = ", ".join("?" for _ in QUEUE_TERMINAL_STATES)
+    with connect() as conn:
+        init_db(conn)
+        rows = conn.execute(
+            f"""
+            select job_id, partition, job_name, user, state, elapsed, nodes, nodelist, reason,
+                   original_script_path, copied_script_path, command
+            from jobs
+            where state is null or upper(state) not in ({placeholders})
+            order by submitted_at desc
+            limit ?
+            """,
+            (*sorted(QUEUE_TERMINAL_STATES), limit),
         ).fetchall()
     lines = [] if no_header else [_squeue_header()]
     lines.extend(_squeue_row(row) for row in rows)
@@ -355,6 +416,9 @@ def main() -> None:
     recent = subparsers.add_parser("recent")
     recent.add_argument("-n", "--limit", type=int, default=10)
     recent.add_argument("--no-header", action="store_true")
+    queue = subparsers.add_parser("queue")
+    queue.add_argument("-n", "--limit", type=int, default=10)
+    queue.add_argument("--no-header", action="store_true")
     events = subparsers.add_parser("events")
     events.add_argument("job_id")
     events.add_argument("-n", "--limit", type=int, default=50)
@@ -381,6 +445,8 @@ def main() -> None:
         print(show_summary(args.job_id, completion=args.completion))
     elif args.command == "recent":
         print(recent_jobs(args.limit, no_header=args.no_header))
+    elif args.command == "queue":
+        print(queue_jobs(args.limit, no_header=args.no_header))
     elif args.command == "events":
         print(list_events(args.job_id, args.limit))
     elif args.command == "files":

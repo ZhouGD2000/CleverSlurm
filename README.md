@@ -10,7 +10,7 @@ The design rule is simple: deterministic code records facts; AI only summarizes 
 - `csrun`: wraps direct `srun` execution, passes stdout/stderr through in CLI mode, and records a standalone local job record when outside an existing allocation.
 - `cscancel`: wraps `scancel`, passes through scancel options, and records a cancellation request event with an optional CleverSlurm-only `--note`.
 - `ctrack`: polls `sacct` for known jobs and updates state, exit code, derived exit code, elapsed time, memory, and node list.
-- `cjobs`: queries recent jobs, job details, events, files, recorded commands, log tails, and AI answers over recent job facts.
+- `cjobs`: queries sacct-like recent history, squeue-like active queues, job details, events, files, recorded commands, log tails, and AI answers over recent job facts.
 - `csummarize`: sends curated job facts to a configured OpenAI-compatible or Anthropic-compatible model API and stores structured AI summaries.
 - Feishu notifications: when `ctrack` sees a terminal job state, it records deterministic/semantic analysis, queues a notification, and immediately sends hard failures through a Feishu/Lark custom bot when configured.
 - Static script analysis: after `csbatch`, a detached worker identifies obvious MATLAB and Python entry commands and records their entry files without wrapping the runtime process.
@@ -249,6 +249,7 @@ Inspect jobs:
 
 ```bash
 cjobs recent
+cjobs queue
 cjobs show 46644
 cjobs events 46644
 cjobs files 46644
@@ -260,13 +261,21 @@ cjobs summary 46644 --completion
 cjobs ask "最近完成了什么任务？都是些什么工作？"
 ```
 
-`cjobs recent` uses an `squeue`-like table:
+`cjobs recent` uses a `sacct`-like history table over recorded CleverSlurm facts, so completed jobs are included:
+
+```text
+JobID JobName Partition Account State ExitCode Elapsed MaxRSS NodeList Submit
+```
+
+Use `cjobs recent --no-header` for script-friendly output.
+
+`cjobs queue` uses an `squeue`-like table for active or not-yet-terminal tracked jobs:
 
 ```text
 JOBID PARTITION NAME USER ST TIME NODES NODELIST(REASON)
 ```
 
-It reads recorded CleverSlurm facts rather than live `squeue`, so completed jobs are included and fields that were not recorded for older jobs may be blank. Use `cjobs recent --no-header` for script-friendly output.
+Use `cjobs queue --no-header` for script-friendly output. Both commands read the CleverSlurm database rather than live Slurm directly, so fields that were not recorded for older jobs may be blank.
 
 Run a direct Slurm command:
 

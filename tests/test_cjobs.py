@@ -8,6 +8,7 @@ from cslurm.cli.cjobs import (
     list_events,
     list_files,
     list_notifications,
+    queue_jobs,
     recent_jobs,
     show_job,
     show_logs,
@@ -49,6 +50,31 @@ def test_cjobs_module_entrypoint_runs_main(isolated_home):
 
     assert "Job 123456" in result.stdout
     assert "state: COMPLETED" in result.stdout
+
+
+def test_cjobs_queue_cli_runs_main(isolated_home):
+    with connect() as conn:
+        init_db(conn)
+        conn.execute(
+            """
+            insert into jobs (
+              job_id, submitted_at, job_name, user, partition, state, created_at, updated_at
+            ) values ('123456', '2026-05-17T01:02:03', 'test-job', 'zgd', 'CPU2', 'RUNNING', 't', 't')
+            """
+        )
+
+    result = subprocess.run(
+        [sys.executable, "-m", "cslurm.cli.cjobs", "queue"],
+        text=True,
+        stdout=subprocess.PIPE,
+        stderr=subprocess.PIPE,
+        check=True,
+    )
+
+    assert "JOBID" in result.stdout
+    assert "123456" in result.stdout
+    assert "CPU2" in result.stdout
+    assert "R" in result.stdout
 
 
 def test_cjobs_summary_reads_stored_submission_summary_without_ai(isolated_home):
@@ -106,7 +132,88 @@ def test_cjobs_summary_cli_supports_completion_flag(isolated_home):
     assert '"completion_status": "FAILED"' in result.stdout
 
 
-def test_cjobs_recent_uses_squeue_like_columns(isolated_home):
+def test_cjobs_recent_uses_sacct_like_columns(isolated_home):
+    with connect() as conn:
+        init_db(conn)
+        conn.execute(
+            """
+            insert into jobs (
+              job_id, submitted_at, job_name, user, partition, account, state,
+              exit_code, elapsed, max_rss, nodes, nodelist, reason, created_at, updated_at
+            ) values (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            """,
+            (
+                "123456",
+                "2026-05-17T01:02:03",
+                "test-job",
+                "zgd",
+                "CPU2",
+                "acct",
+                "RUNNING",
+                "0:0",
+                "00:01:02",
+                "2G",
+                "2",
+                "node[01-02]",
+                None,
+                "t",
+                "t",
+            ),
+        )
+        conn.execute(
+            """
+            insert into jobs (
+              job_id, submitted_at, job_name, user, partition, account, state,
+              exit_code, elapsed, max_rss, nodes, nodelist, reason, created_at, updated_at
+            ) values (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            """,
+            (
+                "123457",
+                "2026-05-17T01:03:03",
+                "pending",
+                "zgd",
+                "CPU2",
+                "acct",
+                "PENDING",
+                None,
+                None,
+                None,
+                "1",
+                None,
+                "Priority",
+                "t",
+                "t",
+            ),
+        )
+
+    lines = recent_jobs(10).splitlines()
+
+    assert lines[0].split() == [
+        "JobID",
+        "JobName",
+        "Partition",
+        "Account",
+        "State",
+        "ExitCode",
+        "Elapsed",
+        "MaxRSS",
+        "NodeList",
+        "Submit",
+    ]
+    assert "123457" in lines[1]
+    assert "pending" in lines[1]
+    assert "CPU2" in lines[1]
+    assert "acct" in lines[1]
+    assert "PENDING" in lines[1]
+    assert "123456" in lines[2]
+    assert "RUNNING" in lines[2]
+    assert "0:0" in lines[2]
+    assert "00:01:02" in lines[2]
+    assert "2G" in lines[2]
+    assert "node[01-02]" in lines[2]
+
+
+def test_cjobs_queue_uses_squeue_like_columns(isolated_home):
     with connect() as conn:
         init_db(conn)
         conn.execute(
@@ -153,8 +260,30 @@ def test_cjobs_recent_uses_squeue_like_columns(isolated_home):
                 "t",
             ),
         )
+        conn.execute(
+            """
+            insert into jobs (
+              job_id, submitted_at, job_name, user, partition, state, elapsed,
+              nodes, nodelist, reason, created_at, updated_at
+            ) values (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            """,
+            (
+                "123458",
+                "2026-05-17T01:04:03",
+                "done",
+                "zgd",
+                "CPU2",
+                "COMPLETED",
+                "00:00:10",
+                "1",
+                "node03",
+                None,
+                "t",
+                "t",
+            ),
+        )
 
-    lines = recent_jobs(10).splitlines()
+    lines = queue_jobs(10).splitlines()
 
     assert lines[0].split() == ["JOBID", "PARTITION", "NAME", "USER", "ST", "TIME", "NODES", "NODELIST(REASON)"]
     assert "123457" in lines[1]
@@ -167,6 +296,7 @@ def test_cjobs_recent_uses_squeue_like_columns(isolated_home):
     assert "R" in lines[2]
     assert "00:01:02" in lines[2]
     assert "node[01-02]" in lines[2]
+    assert "123458" not in "\n".join(lines)
 
 
 def test_cjobs_recent_no_header(isolated_home):
@@ -179,9 +309,9 @@ def test_cjobs_recent_no_header(isolated_home):
 
     text = recent_jobs(10, no_header=True)
 
-    assert "JOBID" not in text
+    assert "JobID" not in text
     assert "123456" in text
-    assert "CD" in text
+    assert "COMPLETED" in text
 
 
 def test_cjobs_recent_falls_back_to_saved_script_for_partition_and_name(isolated_home, tmp_path):
@@ -206,8 +336,8 @@ def test_cjobs_recent_falls_back_to_saved_script_for_partition_and_name(isolated
     text = recent_jobs(10)
 
     assert "CPU2" in text
-    assert "from-scr" in text
-    assert "R" in text
+    assert "from-script" in text
+    assert "RUNNING" in text
 
 
 def test_cjobs_recent_falls_back_to_recorded_command_for_partition_and_name(isolated_home):
@@ -232,8 +362,8 @@ def test_cjobs_recent_falls_back_to_recorded_command_for_partition_and_name(isol
     text = recent_jobs(10)
 
     assert "CPU2" in text
-    assert "from-com" in text
-    assert "PD" in text
+    assert "from-command" in text
+    assert "PENDING" in text
 
 
 def test_cjobs_events_files_and_commands_return_tables(isolated_home):
