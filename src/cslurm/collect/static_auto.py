@@ -2,7 +2,7 @@ from datetime import datetime, timezone
 from pathlib import Path
 import sys
 
-from cslurm.collect.static_script import insert_static_commands
+from cslurm.collect.static.storage import insert_static_commands
 from cslurm.config import root_dir, static_analysis_enabled
 from cslurm.db import connect, init_db
 

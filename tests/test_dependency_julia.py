@@ -1,4 +1,4 @@
-from cslurm.collect.dependency_julia import find_julia_dependencies
+from cslurm.collect.static.julia import find_julia_dependencies
 
 
 def test_julia_include_parser_finds_static_local_includes(tmp_path):

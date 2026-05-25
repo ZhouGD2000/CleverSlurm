@@ -1,6 +1,6 @@
 from pathlib import Path
 
-from cslurm.collect.static_script import find_static_commands
+from cslurm.collect.static.script import find_static_commands
 
 
 def test_static_script_finds_matlab_entry_from_variable_command(tmp_path):
