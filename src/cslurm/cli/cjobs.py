@@ -85,6 +85,41 @@ def _fit(value: object, width: int) -> str:
     return text[:width]
 
 
+def _parse_sbatch_directive(script_text: str, option: str, short_option: str) -> str | None:
+    long_prefix = f"#SBATCH --{option}"
+    short_prefix = f"#SBATCH {short_option}"
+    for line in script_text.splitlines():
+        stripped = line.strip()
+        if stripped.startswith(long_prefix + "="):
+            return stripped.split("=", 1)[1].strip()
+        if stripped.startswith(long_prefix + " "):
+            return stripped.split(None, 2)[2].strip()
+        if stripped.startswith(short_prefix + " "):
+            return stripped.split(None, 2)[2].strip()
+        if stripped.startswith(short_prefix) and len(stripped) > len(short_prefix):
+            return stripped[len(short_prefix) :].strip()
+    return None
+
+
+def _read_script_text(row) -> str | None:
+    for key in ["original_script_path", "copied_script_path"]:
+        path_text = row[key]
+        if not path_text:
+            continue
+        try:
+            return Path(path_text).expanduser().read_text(errors="replace")
+        except OSError:
+            continue
+    return None
+
+
+def _fallback_script_value(row, option: str, short_option: str) -> str | None:
+    script_text = _read_script_text(row)
+    if not script_text:
+        return None
+    return _parse_sbatch_directive(script_text, option, short_option)
+
+
 def _nodelist_or_reason(row) -> str:
     if row["nodelist"]:
         return row["nodelist"]
@@ -102,10 +137,12 @@ def _squeue_header() -> str:
 
 
 def _squeue_row(row) -> str:
+    partition = row["partition"] or _fallback_script_value(row, "partition", "-p") or "*"
+    job_name = row["job_name"] or _fallback_script_value(row, "job-name", "-J") or ""
     return (
         f"{str(row['job_id'] or ''):>18} "
-        f"{_fit(row['partition'] or '*', 9):<9} "
-        f"{_fit(row['job_name'] or '', 8):<8} "
+        f"{_fit(partition, 9):<9} "
+        f"{_fit(job_name, 8):<8} "
         f"{_fit(row['user'] or _current_user(), 8):<8} "
         f"{_state_code(row['state']):<3} "
         f"{_fit(row['elapsed'] or '0:00', 10):>10} "
@@ -119,7 +156,8 @@ def recent_jobs(limit: int = 10, *, no_header: bool = False) -> str:
         init_db(conn)
         rows = conn.execute(
             """
-            select job_id, partition, job_name, user, state, elapsed, nodes, nodelist, reason
+            select job_id, partition, job_name, user, state, elapsed, nodes, nodelist, reason,
+                   original_script_path, copied_script_path
             from jobs
             order by submitted_at desc
             limit ?

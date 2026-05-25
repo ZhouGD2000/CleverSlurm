@@ -184,6 +184,32 @@ def test_cjobs_recent_no_header(isolated_home):
     assert "CD" in text
 
 
+def test_cjobs_recent_falls_back_to_saved_script_for_partition_and_name(isolated_home, tmp_path):
+    script = tmp_path / "job.slurm"
+    script.write_text(
+        "#!/bin/bash\n"
+        "#SBATCH --job-name=from-script\n"
+        "#SBATCH -p CPU2\n"
+        "hostname\n"
+    )
+    with connect() as conn:
+        init_db(conn)
+        conn.execute(
+            """
+            insert into jobs (
+              job_id, submitted_at, original_script_path, state, created_at, updated_at
+            ) values (?, ?, ?, ?, ?, ?)
+            """,
+            ("123456", "2026-05-17T01:02:03", str(script), "RUNNING", "t", "t"),
+        )
+
+    text = recent_jobs(10)
+
+    assert "CPU2" in text
+    assert "from-scr" in text
+    assert "R" in text
+
+
 def test_cjobs_events_files_and_commands_return_tables(isolated_home):
     with connect() as conn:
         init_db(conn)

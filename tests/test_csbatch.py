@@ -113,6 +113,27 @@ def test_csbatch_records_squeue_like_submission_metadata(isolated_home, fake_bin
     )
 
 
+def test_csbatch_records_partition_and_name_from_script_directives(isolated_home, fake_bin, tmp_path, monkeypatch):
+    _disable_auto_summary(monkeypatch)
+    write_executable(fake_bin / "sbatch", "#!/bin/sh\nprintf '123456\\n'\n")
+    script = tmp_path / "job.slurm"
+    script.write_text(
+        "#!/bin/bash\n"
+        "#SBATCH --job-name=from-script\n"
+        "#SBATCH -p CPU2\n"
+        "hostname\n"
+    )
+
+    from cslurm.cli.csbatch import submit_batch
+
+    submit_batch([str(script)])
+
+    with sqlite3.connect(isolated_home / "db.sqlite") as conn:
+        row = conn.execute("select job_name, partition from jobs where job_id = '123456'").fetchone()
+
+    assert row == ("from-script", "CPU2")
+
+
 def test_csbatch_records_default_slurm_log_path_when_not_configured(isolated_home, fake_bin, tmp_path, monkeypatch):
     _disable_auto_summary(monkeypatch)
     write_executable(fake_bin / "sbatch", "#!/bin/sh\nprintf '123456\\n'\n")
