@@ -18,7 +18,6 @@ from cslurm.slurm.sbatch_options import (
     SBATCH_SHORT_OPTIONS_WITH_ARG,
     command_text,
     metadata_value,
-    parse_script_option,
 )
 
 
@@ -234,9 +233,12 @@ def submit_batch_result(argv: list[str]) -> BatchSubmission:
     (job_dir / "git.diff").write_text(git_meta.diff)
     script_dir = script.parent if script is not None else Path.cwd()
     stdout_path = _resolve_sbatch_path(
-        parse_script_option(script_text, "output", "-o"), script_dir, job_id
+        metadata_value(script_text, parsed.passthrough_args, "output", "-o"), script_dir, job_id
     ) or _default_slurm_output_path(script_dir, job_id)
-    stderr_path = _resolve_sbatch_path(parse_script_option(script_text, "error", "-e"), script_dir, job_id) or stdout_path
+    stderr_path = (
+        _resolve_sbatch_path(metadata_value(script_text, parsed.passthrough_args, "error", "-e"), script_dir, job_id)
+        or stdout_path
+    )
 
     with connect() as conn:
         init_db(conn)

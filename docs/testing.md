@@ -1,6 +1,11 @@
 # Testing
 
-The normal test suite does not require Slurm. It creates fake `sbatch`, `srun`, `sacct`, and `scancel` executables in temporary directories and points the code at those commands through `PATH`.
+The test suite is split automatically:
+
+- Fake Slurm tests always run. They create fake `sbatch`, `srun`, `sacct`, and `scancel` executables in temporary directories and put those directories first in `PATH`.
+- Real Slurm tests are marked `real_slurm`. At collection time pytest probes `sbatch`, `sacct`, `squeue`, `sinfo`, `srun`, and `scancel`. If any command is unavailable or does not answer `--version`, the real tests are skipped. If all commands are available, pytest runs the real smoke tests.
+
+Real Slurm tests may submit one short smoke job. They never call `scancel`.
 
 ## Local Tests
 
@@ -9,6 +14,24 @@ Run:
 ```bash
 python3 -m pytest -q
 python3 -m compileall -q src/cslurm
+```
+
+Run only fake Slurm tests:
+
+```bash
+python3 -m pytest -q -m "not real_slurm"
+```
+
+Run only real Slurm tests and show skip reasons:
+
+```bash
+python3 -m pytest -q -m real_slurm -rs
+```
+
+Disable real Slurm tests even on a host where Slurm is installed:
+
+```bash
+CSLURM_RUN_REAL_SLURM=0 python3 -m pytest -q
 ```
 
 The tests cover:
@@ -38,36 +61,43 @@ The tests cover:
 
 ## Real Slurm Smoke Test
 
-Use a new working directory and a fresh `CSLURM_ROOT`. This keeps the smoke test isolated from any existing tracking database.
+The automated real Slurm pytest writes into a fresh directory under `~/.cslurm-real-tests/` by default and uses a fresh `CSLURM_ROOT` inside that directory. Override the base directory when needed:
+
+```bash
+export CSLURM_REAL_SLURM_WORKDIR=/path/on/shared/filesystem/cleverslurm-real-tests
+```
+
+Optional cluster-specific settings:
+
+```bash
+export CSLURM_REAL_SLURM_PARTITION=CPU2
+export CSLURM_REAL_SLURM_ACCOUNT=my-account
+export CSLURM_REAL_SLURM_QOS=normal
+export CSLURM_REAL_SLURM_TIMEOUT_SECONDS=180
+```
+
+If `CSLURM_REAL_SLURM_PARTITION` is not set, the test asks `sinfo` for the first available partition and lets `sbatch` use the cluster default if no partition can be detected.
+
+Manual smoke tests are still useful when you want to inspect every command. Use a new working directory and a fresh `CSLURM_ROOT`:
 
 ```bash
 mkdir -p ~/cleverslurm-smoke
 cd ~/cleverslurm-smoke
 ```
 
-Create a tiny job:
-
-```bash
-cat > smoke_real.slurm <<'EOF'
-#!/bin/bash
-#SBATCH --job-name=cleverslurm-smoke
-#SBATCH --partition=CPU2
-#SBATCH --nodes=1
-#SBATCH --ntasks=1
-#SBATCH --cpus-per-task=1
-#SBATCH --time=00:01:00
-#SBATCH --output=smoke-%j.out
-#SBATCH --error=smoke-%j.err
-hostname
-python3 -c "print('cleverslurm smoke ok')"
-EOF
-```
-
-Submit and track:
+Submit a tiny wrapped job:
 
 ```bash
 CSLURM_ROOT=$PWD/.cslurm-real PYTHONPATH=/path/to/cleverslurm/src \
-  python3 -m cslurm.cli.csbatch smoke_real.slurm
+  python3 -m cslurm.cli.csbatch \
+    --job-name cleverslurm-smoke \
+    --time=00:02:00 \
+    --nodes=1 \
+    --ntasks=1 \
+    --cpus-per-task=1 \
+    --output=smoke-%j.out \
+    --error=smoke-%j.err \
+    --wrap "hostname; echo cleverslurm real smoke ok"
 
 CSLURM_ROOT=$PWD/.cslurm-real PYTHONPATH=/path/to/cleverslurm/src \
   python3 - <<'PY'
@@ -93,7 +123,7 @@ Expected result:
 ```text
 state: COMPLETED
 exit_code: 0:0
-cleverslurm smoke ok
+cleverslurm real smoke ok
 ```
 
 ## Cluster Safety

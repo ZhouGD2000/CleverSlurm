@@ -69,6 +69,22 @@ def test_csbatch_records_stdout_and_stderr_paths_with_job_id(isolated_home, fake
     assert row == (str(tmp_path / "logs" / "smoke-123456.out"), str(tmp_path / "logs" / "smoke-123456.err"))
 
 
+def test_csbatch_records_stdout_and_stderr_paths_from_cli_options(isolated_home, fake_bin, tmp_path, monkeypatch):
+    _disable_auto_summary(monkeypatch)
+    write_executable(fake_bin / "sbatch", "#!/bin/sh\nprintf '123456\\n'\n")
+    script = tmp_path / "job.slurm"
+    script.write_text("#!/bin/bash\nhostname\n")
+
+    from cslurm.cli.csbatch import submit_batch
+
+    submit_batch(["--output=cli-%j.out", "--error", "cli-%j.err", str(script)])
+
+    with sqlite3.connect(isolated_home / "db.sqlite") as conn:
+        row = conn.execute("select stdout_path, stderr_path from jobs where job_id = '123456'").fetchone()
+
+    assert row == (str(tmp_path / "cli-123456.out"), str(tmp_path / "cli-123456.err"))
+
+
 def test_csbatch_records_squeue_like_submission_metadata(isolated_home, fake_bin, tmp_path, monkeypatch):
     _disable_auto_summary(monkeypatch)
     monkeypatch.setenv("USER", "zgd")
