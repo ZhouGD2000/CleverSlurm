@@ -13,71 +13,13 @@ from cslurm.ai.auto import record_auto_summary_failure, record_auto_summary_queu
 from cslurm.config import ai_auto_summary_enabled, root_dir, static_analysis_enabled
 from cslurm.db import connect, init_db
 from cslurm.slurm.commands import run_slurm_command
-
-
-SBATCH_LONG_OPTIONS_WITH_ARG = {
-    "account",
-    "array",
-    "begin",
-    "chdir",
-    "cluster-constraint",
-    "clusters",
-    "comment",
-    "constraint",
-    "container",
-    "container-id",
-    "cores-per-socket",
-    "cpu-bind",
-    "cpus-per-gpu",
-    "cpus-per-task",
-    "dependency",
-    "distribution",
-    "error",
-    "exclude",
-    "export",
-    "export-file",
-    "extra-node-info",
-    "gid",
-    "gpus",
-    "gpus-per-node",
-    "gpus-per-socket",
-    "gpus-per-task",
-    "gres",
-    "gres-flags",
-    "hint",
-    "input",
-    "job-name",
-    "licenses",
-    "mail-type",
-    "mail-user",
-    "mem",
-    "mem-bind",
-    "mem-per-cpu",
-    "mem-per-gpu",
-    "mincpus",
-    "nodes",
-    "nodelist",
-    "ntasks",
-    "ntasks-per-core",
-    "ntasks-per-gpu",
-    "ntasks-per-node",
-    "ntasks-per-socket",
-    "open-mode",
-    "output",
-    "partition",
-    "qos",
-    "reservation",
-    "signal",
-    "sockets-per-node",
-    "threads-per-core",
-    "time",
-    "time-min",
-    "uid",
-    "wckey",
-    "wrap",
-}
-
-SBATCH_SHORT_OPTIONS_WITH_ARG = set("AacCDeEJLNnopqtuwx")
+from cslurm.slurm.sbatch_options import (
+    SBATCH_LONG_OPTIONS_WITH_ARG,
+    SBATCH_SHORT_OPTIONS_WITH_ARG,
+    command_text,
+    metadata_value,
+    parse_script_option,
+)
 
 
 @dataclass(frozen=True)
@@ -100,86 +42,8 @@ def _now() -> str:
     return datetime.now(timezone.utc).isoformat()
 
 
-def _parse_job_name(script_text: str) -> str | None:
-    for line in script_text.splitlines():
-        stripped = line.strip()
-        if stripped.startswith("#SBATCH --job-name="):
-            return stripped.split("=", 1)[1]
-        if stripped.startswith("#SBATCH -J "):
-            return stripped.split(None, 2)[2]
-    return None
-
-
-def _parse_sbatch_option(script_text: str, option: str, short_option: str | None = None) -> str | None:
-    long_prefix = f"#SBATCH --{option}"
-    short_prefix = f"#SBATCH {short_option}" if short_option else None
-    for line in script_text.splitlines():
-        stripped = line.strip()
-        if stripped.startswith(long_prefix + "="):
-            return stripped.split("=", 1)[1].strip()
-        if stripped.startswith(long_prefix + " "):
-            return stripped.split(None, 2)[2].strip()
-        if short_prefix and stripped.startswith(short_prefix + " "):
-            return stripped.split(None, 2)[2].strip()
-        if short_prefix and stripped.startswith(short_prefix) and len(stripped) > len(short_prefix):
-            return stripped[len(short_prefix) :].strip()
-    return None
-
-
-def _parse_cli_option(args: list[str], option: str, short_option: str | None = None) -> str | None:
-    value = None
-    index = 0
-    long_name = f"--{option}"
-    while index < len(args):
-        arg = args[index]
-        if arg == long_name and index + 1 < len(args):
-            value = args[index + 1]
-            index += 2
-            continue
-        if arg.startswith(long_name + "="):
-            value = arg.split("=", 1)[1]
-            index += 1
-            continue
-        if short_option and arg == short_option and index + 1 < len(args):
-            value = args[index + 1]
-            index += 2
-            continue
-        if short_option and arg.startswith(short_option) and len(arg) > len(short_option):
-            value = arg[len(short_option) :]
-            index += 1
-            continue
-        index += 1
-    return value
-
-
-def _sbatch_metadata_value(
-    *,
-    script_text: str,
-    passthrough_args: list[str],
-    option: str,
-    short_option: str | None = None,
-) -> str | None:
-    return _parse_cli_option(passthrough_args, option, short_option) or _parse_sbatch_option(
-        script_text, option, short_option
-    )
-
-
 def _current_user() -> str | None:
     return os.environ.get("USER") or os.environ.get("LOGNAME") or getpass.getuser()
-
-
-def _parse_sbatch_path(script_text: str, option: str) -> str | None:
-    long_prefix = f"#SBATCH --{option}"
-    short_prefix = "#SBATCH -o" if option == "output" else "#SBATCH -e"
-    for line in script_text.splitlines():
-        stripped = line.strip()
-        if stripped.startswith(long_prefix + "="):
-            return stripped.split("=", 1)[1].strip()
-        if stripped.startswith(long_prefix + " "):
-            return stripped.split(None, 2)[2].strip()
-        if stripped.startswith(short_prefix + " "):
-            return stripped.split(None, 2)[2].strip()
-    return None
 
 
 def _resolve_sbatch_path(path_text: str | None, script_dir: Path, job_id: str) -> str | None:
@@ -340,7 +204,7 @@ def submit_batch_result(argv: list[str]) -> BatchSubmission:
     script = parsed.script_path
     script_text = script.read_text() if script is not None else _wrap_script_text(parsed.wrap_command or "")
     submitted_at = _now()
-    command = "csbatch " + " ".join(argv)
+    command = command_text("csbatch", argv)
 
     prepared_root = root_dir() / "pending"
     prepared_root.mkdir(parents=True, exist_ok=True)
@@ -369,10 +233,10 @@ def submit_batch_result(argv: list[str]) -> BatchSubmission:
     (job_dir / "git_status.txt").write_text(git_meta.status)
     (job_dir / "git.diff").write_text(git_meta.diff)
     script_dir = script.parent if script is not None else Path.cwd()
-    stdout_path = _resolve_sbatch_path(_parse_sbatch_path(script_text, "output"), script_dir, job_id) or _default_slurm_output_path(
-        script_dir, job_id
-    )
-    stderr_path = _resolve_sbatch_path(_parse_sbatch_path(script_text, "error"), script_dir, job_id) or stdout_path
+    stdout_path = _resolve_sbatch_path(
+        parse_script_option(script_text, "output", "-o"), script_dir, job_id
+    ) or _default_slurm_output_path(script_dir, job_id)
+    stderr_path = _resolve_sbatch_path(parse_script_option(script_text, "error", "-e"), script_dir, job_id) or stdout_path
 
     with connect() as conn:
         init_db(conn)
@@ -393,55 +257,14 @@ def submit_batch_result(argv: list[str]) -> BatchSubmission:
                 str(script) if script is not None else None,
                 str(copied_instrumented),
                 _current_user(),
-                _sbatch_metadata_value(
-                    script_text=script_text,
-                    passthrough_args=parsed.passthrough_args,
-                    option="job-name",
-                    short_option="-J",
-                )
-                or _parse_job_name(script_text),
-                _sbatch_metadata_value(
-                    script_text=script_text,
-                    passthrough_args=parsed.passthrough_args,
-                    option="partition",
-                    short_option="-p",
-                ),
-                _sbatch_metadata_value(
-                    script_text=script_text,
-                    passthrough_args=parsed.passthrough_args,
-                    option="account",
-                    short_option="-A",
-                ),
-                _sbatch_metadata_value(
-                    script_text=script_text,
-                    passthrough_args=parsed.passthrough_args,
-                    option="qos",
-                    short_option="-q",
-                ),
-                _sbatch_metadata_value(
-                    script_text=script_text,
-                    passthrough_args=parsed.passthrough_args,
-                    option="array",
-                    short_option="-a",
-                ),
-                _sbatch_metadata_value(
-                    script_text=script_text,
-                    passthrough_args=parsed.passthrough_args,
-                    option="dependency",
-                    short_option="-d",
-                ),
-                _sbatch_metadata_value(
-                    script_text=script_text,
-                    passthrough_args=parsed.passthrough_args,
-                    option="nodes",
-                    short_option="-N",
-                ),
-                _sbatch_metadata_value(
-                    script_text=script_text,
-                    passthrough_args=parsed.passthrough_args,
-                    option="nodelist",
-                    short_option="-w",
-                ),
+                metadata_value(script_text, parsed.passthrough_args, "job-name", "-J"),
+                metadata_value(script_text, parsed.passthrough_args, "partition", "-p"),
+                metadata_value(script_text, parsed.passthrough_args, "account", "-A"),
+                metadata_value(script_text, parsed.passthrough_args, "qos", "-q"),
+                metadata_value(script_text, parsed.passthrough_args, "array", "-a"),
+                metadata_value(script_text, parsed.passthrough_args, "dependency", "-d"),
+                metadata_value(script_text, parsed.passthrough_args, "nodes", "-N"),
+                metadata_value(script_text, parsed.passthrough_args, "nodelist", "-w"),
                 stdout_path,
                 stderr_path,
                 git_meta.commit,

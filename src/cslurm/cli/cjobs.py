@@ -4,6 +4,7 @@ import os
 from pathlib import Path
 
 from cslurm.db import connect, init_db
+from cslurm.slurm.sbatch_options import parse_cli_option, parse_command_args, parse_script_option
 
 
 SQUEUE_STATE_CODES = {
@@ -85,22 +86,6 @@ def _fit(value: object, width: int) -> str:
     return text[:width]
 
 
-def _parse_sbatch_directive(script_text: str, option: str, short_option: str) -> str | None:
-    long_prefix = f"#SBATCH --{option}"
-    short_prefix = f"#SBATCH {short_option}"
-    for line in script_text.splitlines():
-        stripped = line.strip()
-        if stripped.startswith(long_prefix + "="):
-            return stripped.split("=", 1)[1].strip()
-        if stripped.startswith(long_prefix + " "):
-            return stripped.split(None, 2)[2].strip()
-        if stripped.startswith(short_prefix + " "):
-            return stripped.split(None, 2)[2].strip()
-        if stripped.startswith(short_prefix) and len(stripped) > len(short_prefix):
-            return stripped[len(short_prefix) :].strip()
-    return None
-
-
 def _read_script_text(row) -> str | None:
     for key in ["original_script_path", "copied_script_path"]:
         path_text = row[key]
@@ -117,7 +102,18 @@ def _fallback_script_value(row, option: str, short_option: str) -> str | None:
     script_text = _read_script_text(row)
     if not script_text:
         return None
-    return _parse_sbatch_directive(script_text, option, short_option)
+    return parse_script_option(script_text, option, short_option)
+
+
+def _fallback_command_value(row, option: str, short_option: str) -> str | None:
+    command = row["command"] if "command" in row.keys() else None
+    if not command:
+        return None
+    return parse_cli_option(parse_command_args(command), option, short_option)
+
+
+def _fallback_sbatch_value(row, option: str, short_option: str) -> str | None:
+    return _fallback_command_value(row, option, short_option) or _fallback_script_value(row, option, short_option)
 
 
 def _nodelist_or_reason(row) -> str:
@@ -137,8 +133,8 @@ def _squeue_header() -> str:
 
 
 def _squeue_row(row) -> str:
-    partition = row["partition"] or _fallback_script_value(row, "partition", "-p") or "*"
-    job_name = row["job_name"] or _fallback_script_value(row, "job-name", "-J") or ""
+    partition = row["partition"] or _fallback_sbatch_value(row, "partition", "-p") or "*"
+    job_name = row["job_name"] or _fallback_sbatch_value(row, "job-name", "-J") or ""
     return (
         f"{str(row['job_id'] or ''):>18} "
         f"{_fit(partition, 9):<9} "
@@ -157,7 +153,7 @@ def recent_jobs(limit: int = 10, *, no_header: bool = False) -> str:
         rows = conn.execute(
             """
             select job_id, partition, job_name, user, state, elapsed, nodes, nodelist, reason,
-                   original_script_path, copied_script_path
+                   original_script_path, copied_script_path, command
             from jobs
             order by submitted_at desc
             limit ?

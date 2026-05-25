@@ -210,6 +210,32 @@ def test_cjobs_recent_falls_back_to_saved_script_for_partition_and_name(isolated
     assert "R" in text
 
 
+def test_cjobs_recent_falls_back_to_recorded_command_for_partition_and_name(isolated_home):
+    with connect() as conn:
+        init_db(conn)
+        conn.execute(
+            """
+            insert into jobs (
+              job_id, submitted_at, command, state, created_at, updated_at
+            ) values (?, ?, ?, ?, ?, ?)
+            """,
+            (
+                "123456",
+                "2026-05-17T01:02:03",
+                "csbatch --job-name from-command -p CPU2 job.slurm",
+                "PENDING",
+                "t",
+                "t",
+            ),
+        )
+
+    text = recent_jobs(10)
+
+    assert "CPU2" in text
+    assert "from-com" in text
+    assert "PD" in text
+
+
 def test_cjobs_events_files_and_commands_return_tables(isolated_home):
     with connect() as conn:
         init_db(conn)
