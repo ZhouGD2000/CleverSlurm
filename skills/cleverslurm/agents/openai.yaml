@@ -1,0 +1,6 @@
+interface:
+  display_name: "CleverSlurm"
+  short_description: "Use and maintain CleverSlurm Slurm tracking"
+  default_prompt: "Use $cleverslurm to inspect recent Slurm jobs and explain what happened."
+policy:
+  allow_implicit_invocation: true

@@ -142,6 +142,25 @@ For development without installing console scripts, run with `PYTHONPATH=src`:
 PYTHONPATH=src python3 -m cslurm.cli.csbatch job.slurm
 ```
 
+## Use As A Codex Skill
+
+This repository also includes a Codex skill wrapper at `skills/cleverslurm/`. The skill teaches an agent how to use and maintain CleverSlurm safely, but it does not replace the Python package. Install the package normally when you need the actual CLI commands.
+
+Install or copy the skill into your Codex skills directory:
+
+```bash
+mkdir -p ~/.codex/skills
+cp -R skills/cleverslurm ~/.codex/skills/
+```
+
+Then invoke it explicitly as `$cleverslurm`, or let Codex use it automatically for CleverSlurm, Slurm tracking, `csbatch`, `cjobs`, `ctrack`, `cshim`, AI summaries, and Feishu notification tasks.
+
+The public repository is:
+
+```text
+git@github.com:ZhouGD2000/CleverSlurm.git
+```
+
 ## Configuration
 
 By default CleverSlurm writes to:
