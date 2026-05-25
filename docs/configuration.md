@@ -60,13 +60,20 @@ cshim install --bin-dir /path/to/env/bin
 cshim status --bin-dir /path/to/env/bin
 ```
 
+For a uv-managed checkout, use the uv environment's scripts directory:
+
+```bash
+cshim install --bin-dir /path/to/cleverslurm/.venv/bin
+cshim status --bin-dir /path/to/cleverslurm/.venv/bin
+```
+
 Use the same `--bin-dir` when removing shims:
 
 ```bash
 cshim remove --bin-dir /path/to/env/bin
 ```
 
-Remove shims before `python3 -m pip uninstall CleverSlurm`. After uninstall, the `cshim` command may no longer exist in that Python environment. `cshim remove` only deletes files with the CleverSlurm-managed marker, so it will not remove an unrelated user or system `sbatch`.
+Remove shims before `python3 -m pip uninstall CleverSlurm` or `uv pip uninstall CleverSlurm`. After uninstall, the `cshim` command may no longer exist in that Python environment. `cshim remove` only deletes files with the CleverSlurm-managed marker, so it will not remove an unrelated user or system `sbatch`.
 
 Do not use `cshim install --force` unless you have checked the target files and intentionally want to overwrite unmanaged `sbatch`, `srun`, or `scancel` files in the chosen directory.
 
@@ -86,11 +93,25 @@ ctrack auto on --repo /path/to/cleverslurm --python /path/to/python3
 ctrack auto status
 ```
 
+For uv, point cron at the uv environment's Python:
+
+```bash
+ctrack auto on --repo /path/to/cleverslurm --python /path/to/cleverslurm/.venv/bin/python
+ctrack auto status
+```
+
 Use `ctrack auto off` before uninstalling CleverSlurm:
 
 ```bash
 ctrack auto off
 python3 -m pip uninstall CleverSlurm
+```
+
+or, for an activated uv environment:
+
+```bash
+ctrack auto off
+uv pip uninstall CleverSlurm
 ```
 
 The generated cron command self-checks whether `cslurm` can still be imported. If the package or source checkout is gone, it removes only the marked CleverSlurm cron block and exits. Still, explicit `ctrack auto off` is preferred because `pip uninstall` does not run a cleanup hook.

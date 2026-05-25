@@ -19,7 +19,9 @@ The design rule is simple: deterministic code records facts; AI only summarizes 
 
 ## Install
 
-From the repository root:
+### With pip
+
+From the repository root, install into the active Python environment:
 
 ```bash
 python3 -m pip install -e .
@@ -27,6 +29,37 @@ command -v csbatch cjobs ctrack cshim
 ```
 
 Use the same `python3` environment for install, runtime, and uninstall. `pip install -e .` installs console scripts into that environment's scripts directory, such as `csbatch`, `cjobs`, `ctrack`, and `cshim`.
+
+### With uv
+
+Use `uv` with a dedicated virtual environment when you want installation, command scripts, cron, and uninstall to be tied to one explicit environment:
+
+```bash
+uv venv .venv
+source .venv/bin/activate
+uv pip install -e .
+command -v csbatch cjobs ctrack cshim
+```
+
+Without activating the environment, point `uv` at the environment explicitly:
+
+```bash
+uv pip install --python .venv -e .
+.venv/bin/cjobs recent
+```
+
+You can also run commands through uv from the repository root:
+
+```bash
+uv run --project . cjobs recent
+uv run --project . csbatch job.slurm
+```
+
+For long-running use on a cluster, prefer putting the uv environment's scripts directory on `PATH`:
+
+```bash
+export PATH=/path/to/cleverslurm/.venv/bin:$PATH
+```
 
 Installation does not start automatic tracking. Enable it explicitly after install when you want CleverSlurm to refresh job state and dispatch Feishu notifications from cron. For a normal installed environment:
 
@@ -38,6 +71,13 @@ For source checkouts, cron, or hosts with multiple Python environments, specify 
 
 ```bash
 ctrack auto on --repo /path/to/cleverslurm --python /path/to/python3
+ctrack auto status
+```
+
+For a uv environment, use the environment's Python:
+
+```bash
+ctrack auto on --repo /path/to/cleverslurm --python /path/to/cleverslurm/.venv/bin/python
 ctrack auto status
 ```
 
@@ -55,12 +95,35 @@ cshim install --bin-dir /path/to/env/bin
 cshim status --bin-dir /path/to/env/bin
 ```
 
+For a uv environment, that directory is usually:
+
+```bash
+cshim install --bin-dir /path/to/cleverslurm/.venv/bin
+cshim status --bin-dir /path/to/cleverslurm/.venv/bin
+```
+
 Uninstall the editable package and console scripts:
 
 ```bash
 cshim remove
 ctrack auto off
 python3 -m pip uninstall CleverSlurm
+```
+
+With uv and an activated environment:
+
+```bash
+cshim remove
+ctrack auto off
+uv pip uninstall CleverSlurm
+```
+
+Without activation:
+
+```bash
+/path/to/cleverslurm/.venv/bin/cshim remove --bin-dir /path/to/cleverslurm/.venv/bin
+/path/to/cleverslurm/.venv/bin/ctrack auto off
+uv pip uninstall --python /path/to/cleverslurm/.venv CleverSlurm
 ```
 
 If shims were installed with an explicit directory, remove them with the same directory before uninstalling:
