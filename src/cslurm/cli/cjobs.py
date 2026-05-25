@@ -1,7 +1,33 @@
 import json
+import getpass
+import os
 from pathlib import Path
 
 from cslurm.db import connect, init_db
+
+
+SQUEUE_STATE_CODES = {
+    "BOOT_FAIL": "BF",
+    "CANCELLED": "CA",
+    "COMPLETED": "CD",
+    "COMPLETING": "CG",
+    "CONFIGURING": "CF",
+    "DEADLINE": "DL",
+    "FAILED": "F",
+    "NODE_FAIL": "NF",
+    "OUT_OF_MEMORY": "OOM",
+    "PENDING": "PD",
+    "PREEMPTED": "PR",
+    "REQUEUED": "RQ",
+    "RESIZING": "RS",
+    "REVOKED": "RV",
+    "RUNNING": "R",
+    "SPECIAL_EXIT": "SE",
+    "STAGE_OUT": "SO",
+    "SUSPENDED": "S",
+    "TIMEOUT": "TO",
+    "UNKNOWN": "UN",
+}
 
 
 def show_job(job_id: str) -> str:
@@ -38,17 +64,71 @@ def show_summary(job_id: str, *, completion: bool = False) -> str:
     return json.dumps(parsed, ensure_ascii=False, indent=2, sort_keys=True)
 
 
-def recent_jobs(limit: int = 10) -> str:
+def _current_user() -> str:
+    return os.environ.get("USER") or os.environ.get("LOGNAME") or getpass.getuser()
+
+
+def _state_code(state: str | None) -> str:
+    if not state:
+        return "UN"
+    normalized = state.strip().upper()
+    for sep in [" ", "+"]:
+        if sep in normalized:
+            normalized = normalized.split(sep, 1)[0]
+    return SQUEUE_STATE_CODES.get(normalized, normalized[:3] or "UN")
+
+
+def _fit(value: object, width: int) -> str:
+    text = "" if value is None else str(value)
+    if len(text) <= width:
+        return text
+    return text[:width]
+
+
+def _nodelist_or_reason(row) -> str:
+    if row["nodelist"]:
+        return row["nodelist"]
+    if row["reason"]:
+        reason = str(row["reason"])
+        return reason if reason.startswith("(") and reason.endswith(")") else f"({reason})"
+    return ""
+
+
+def _squeue_header() -> str:
+    return (
+        f"{'JOBID':>18} {'PARTITION':<9} {'NAME':<8} {'USER':<8} "
+        f"{'ST':<3} {'TIME':>10} {'NODES':>6} NODELIST(REASON)"
+    )
+
+
+def _squeue_row(row) -> str:
+    return (
+        f"{str(row['job_id'] or ''):>18} "
+        f"{_fit(row['partition'] or '*', 9):<9} "
+        f"{_fit(row['job_name'] or '', 8):<8} "
+        f"{_fit(row['user'] or _current_user(), 8):<8} "
+        f"{_state_code(row['state']):<3} "
+        f"{_fit(row['elapsed'] or '0:00', 10):>10} "
+        f"{_fit(row['nodes'] or '', 6):>6} "
+        f"{_nodelist_or_reason(row)}"
+    ).rstrip()
+
+
+def recent_jobs(limit: int = 10, *, no_header: bool = False) -> str:
     with connect() as conn:
         init_db(conn)
         rows = conn.execute(
-            "select job_id, state, job_name, command from jobs order by submitted_at desc limit ?",
+            """
+            select job_id, partition, job_name, user, state, elapsed, nodes, nodelist, reason
+            from jobs
+            order by submitted_at desc
+            limit ?
+            """,
             (limit,),
         ).fetchall()
-    return "\n".join(
-        f"{row['job_id']}\t{row['state'] or ''}\t{row['job_name'] or ''}\t{row['command'] or ''}"
-        for row in rows
-    )
+    lines = [] if no_header else [_squeue_header()]
+    lines.extend(_squeue_row(row) for row in rows)
+    return "\n".join(lines)
 
 
 def list_events(job_id: str, limit: int = 50) -> str:
@@ -240,6 +320,7 @@ def main() -> None:
     summary.add_argument("--completion", action="store_true")
     recent = subparsers.add_parser("recent")
     recent.add_argument("-n", "--limit", type=int, default=10)
+    recent.add_argument("--no-header", action="store_true")
     events = subparsers.add_parser("events")
     events.add_argument("job_id")
     events.add_argument("-n", "--limit", type=int, default=50)
@@ -265,7 +346,7 @@ def main() -> None:
     elif args.command == "summary":
         print(show_summary(args.job_id, completion=args.completion))
     elif args.command == "recent":
-        print(recent_jobs(args.limit))
+        print(recent_jobs(args.limit, no_header=args.no_header))
     elif args.command == "events":
         print(list_events(args.job_id, args.limit))
     elif args.command == "files":

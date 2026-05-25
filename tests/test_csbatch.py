@@ -69,6 +69,50 @@ def test_csbatch_records_stdout_and_stderr_paths_with_job_id(isolated_home, fake
     assert row == (str(tmp_path / "logs" / "smoke-123456.out"), str(tmp_path / "logs" / "smoke-123456.err"))
 
 
+def test_csbatch_records_squeue_like_submission_metadata(isolated_home, fake_bin, tmp_path, monkeypatch):
+    _disable_auto_summary(monkeypatch)
+    monkeypatch.setenv("USER", "zgd")
+    write_executable(fake_bin / "sbatch", "#!/bin/sh\nprintf '123456\\n'\n")
+    script = tmp_path / "job.slurm"
+    script.write_text(
+        "#!/bin/bash\n"
+        "#SBATCH --job-name=from-script\n"
+        "#SBATCH --partition=CPU1\n"
+        "#SBATCH --nodes=1\n"
+        "#SBATCH --nodelist=node001\n"
+        "#SBATCH --account=oldacct\n"
+        "#SBATCH --qos=normal\n"
+        "#SBATCH --array=1-3\n"
+        "#SBATCH --dependency=afterok:111\n"
+        "hostname\n"
+    )
+
+    from cslurm.cli.csbatch import submit_batch
+
+    submit_batch(["--job-name", "from-cli", "-p", "CPU2", "-N2", str(script)])
+
+    with sqlite3.connect(isolated_home / "db.sqlite") as conn:
+        row = conn.execute(
+            """
+            select user, job_name, partition, account, qos, array_spec,
+                   dependency, nodes, nodelist
+            from jobs where job_id = '123456'
+            """
+        ).fetchone()
+
+    assert row == (
+        "zgd",
+        "from-cli",
+        "CPU2",
+        "oldacct",
+        "normal",
+        "1-3",
+        "afterok:111",
+        "2",
+        "node001",
+    )
+
+
 def test_csbatch_records_default_slurm_log_path_when_not_configured(isolated_home, fake_bin, tmp_path, monkeypatch):
     _disable_auto_summary(monkeypatch)
     write_executable(fake_bin / "sbatch", "#!/bin/sh\nprintf '123456\\n'\n")

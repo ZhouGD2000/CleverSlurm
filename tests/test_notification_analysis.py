@@ -182,6 +182,8 @@ def test_init_db_migrates_existing_jobs_table_with_notification_columns(tmp_path
         tables = {row["name"] for row in conn.execute("select name from sqlite_master where type = 'table'")}
 
     assert "derived_exit_code" in columns
+    assert "user" in columns
+    assert "nodes" in columns
     assert "notifications" in tables
     assert "job_analysis" in tables
 

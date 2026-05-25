@@ -197,6 +197,14 @@ cjobs summary 46644 --completion
 cjobs ask "最近完成了什么任务？都是些什么工作？"
 ```
 
+`cjobs recent` uses an `squeue`-like table:
+
+```text
+JOBID PARTITION NAME USER ST TIME NODES NODELIST(REASON)
+```
+
+It reads recorded CleverSlurm facts rather than live `squeue`, so completed jobs are included and fields that were not recorded for older jobs may be blank. Use `cjobs recent --no-header` for script-friendly output.
+
 Run a direct Slurm command:
 
 ```bash

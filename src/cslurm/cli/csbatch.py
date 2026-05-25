@@ -1,3 +1,4 @@
+import getpass
 import os
 import shutil
 import subprocess
@@ -107,6 +108,64 @@ def _parse_job_name(script_text: str) -> str | None:
         if stripped.startswith("#SBATCH -J "):
             return stripped.split(None, 2)[2]
     return None
+
+
+def _parse_sbatch_option(script_text: str, option: str, short_option: str | None = None) -> str | None:
+    long_prefix = f"#SBATCH --{option}"
+    short_prefix = f"#SBATCH {short_option}" if short_option else None
+    for line in script_text.splitlines():
+        stripped = line.strip()
+        if stripped.startswith(long_prefix + "="):
+            return stripped.split("=", 1)[1].strip()
+        if stripped.startswith(long_prefix + " "):
+            return stripped.split(None, 2)[2].strip()
+        if short_prefix and stripped.startswith(short_prefix + " "):
+            return stripped.split(None, 2)[2].strip()
+        if short_prefix and stripped.startswith(short_prefix) and len(stripped) > len(short_prefix):
+            return stripped[len(short_prefix) :].strip()
+    return None
+
+
+def _parse_cli_option(args: list[str], option: str, short_option: str | None = None) -> str | None:
+    value = None
+    index = 0
+    long_name = f"--{option}"
+    while index < len(args):
+        arg = args[index]
+        if arg == long_name and index + 1 < len(args):
+            value = args[index + 1]
+            index += 2
+            continue
+        if arg.startswith(long_name + "="):
+            value = arg.split("=", 1)[1]
+            index += 1
+            continue
+        if short_option and arg == short_option and index + 1 < len(args):
+            value = args[index + 1]
+            index += 2
+            continue
+        if short_option and arg.startswith(short_option) and len(arg) > len(short_option):
+            value = arg[len(short_option) :]
+            index += 1
+            continue
+        index += 1
+    return value
+
+
+def _sbatch_metadata_value(
+    *,
+    script_text: str,
+    passthrough_args: list[str],
+    option: str,
+    short_option: str | None = None,
+) -> str | None:
+    return _parse_cli_option(passthrough_args, option, short_option) or _parse_sbatch_option(
+        script_text, option, short_option
+    )
+
+
+def _current_user() -> str | None:
+    return os.environ.get("USER") or os.environ.get("LOGNAME") or getpass.getuser()
 
 
 def _parse_sbatch_path(script_text: str, option: str) -> str | None:
@@ -321,9 +380,10 @@ def submit_batch_result(argv: list[str]) -> BatchSubmission:
             """
             insert or replace into jobs (
               job_id, submitted_at, submit_cwd, command, original_script_path,
-              copied_script_path, job_name, stdout_path, stderr_path, git_commit, git_dirty,
+              copied_script_path, user, job_name, partition, account, qos, array_spec,
+              dependency, nodes, nodelist, stdout_path, stderr_path, git_commit, git_dirty,
               state, created_at, updated_at
-            ) values (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            ) values (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
             """,
             (
                 job_id,
@@ -332,7 +392,56 @@ def submit_batch_result(argv: list[str]) -> BatchSubmission:
                 command,
                 str(script) if script is not None else None,
                 str(copied_instrumented),
-                _parse_job_name(script_text),
+                _current_user(),
+                _sbatch_metadata_value(
+                    script_text=script_text,
+                    passthrough_args=parsed.passthrough_args,
+                    option="job-name",
+                    short_option="-J",
+                )
+                or _parse_job_name(script_text),
+                _sbatch_metadata_value(
+                    script_text=script_text,
+                    passthrough_args=parsed.passthrough_args,
+                    option="partition",
+                    short_option="-p",
+                ),
+                _sbatch_metadata_value(
+                    script_text=script_text,
+                    passthrough_args=parsed.passthrough_args,
+                    option="account",
+                    short_option="-A",
+                ),
+                _sbatch_metadata_value(
+                    script_text=script_text,
+                    passthrough_args=parsed.passthrough_args,
+                    option="qos",
+                    short_option="-q",
+                ),
+                _sbatch_metadata_value(
+                    script_text=script_text,
+                    passthrough_args=parsed.passthrough_args,
+                    option="array",
+                    short_option="-a",
+                ),
+                _sbatch_metadata_value(
+                    script_text=script_text,
+                    passthrough_args=parsed.passthrough_args,
+                    option="dependency",
+                    short_option="-d",
+                ),
+                _sbatch_metadata_value(
+                    script_text=script_text,
+                    passthrough_args=parsed.passthrough_args,
+                    option="nodes",
+                    short_option="-N",
+                ),
+                _sbatch_metadata_value(
+                    script_text=script_text,
+                    passthrough_args=parsed.passthrough_args,
+                    option="nodelist",
+                    short_option="-w",
+                ),
                 stdout_path,
                 stderr_path,
                 git_meta.commit,

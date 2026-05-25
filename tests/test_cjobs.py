@@ -8,6 +8,7 @@ from cslurm.cli.cjobs import (
     list_events,
     list_files,
     list_notifications,
+    recent_jobs,
     show_job,
     show_logs,
     show_summary,
@@ -103,6 +104,84 @@ def test_cjobs_summary_cli_supports_completion_flag(isolated_home):
     )
 
     assert '"completion_status": "FAILED"' in result.stdout
+
+
+def test_cjobs_recent_uses_squeue_like_columns(isolated_home):
+    with connect() as conn:
+        init_db(conn)
+        conn.execute(
+            """
+            insert into jobs (
+              job_id, submitted_at, job_name, user, partition, state, elapsed,
+              nodes, nodelist, reason, created_at, updated_at
+            ) values (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            """,
+            (
+                "123456",
+                "2026-05-17T01:02:03",
+                "test-job",
+                "zgd",
+                "CPU2",
+                "RUNNING",
+                "00:01:02",
+                "2",
+                "node[01-02]",
+                None,
+                "t",
+                "t",
+            ),
+        )
+        conn.execute(
+            """
+            insert into jobs (
+              job_id, submitted_at, job_name, user, partition, state, elapsed,
+              nodes, nodelist, reason, created_at, updated_at
+            ) values (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            """,
+            (
+                "123457",
+                "2026-05-17T01:03:03",
+                "pending",
+                "zgd",
+                "CPU2",
+                "PENDING",
+                None,
+                "1",
+                None,
+                "Priority",
+                "t",
+                "t",
+            ),
+        )
+
+    lines = recent_jobs(10).splitlines()
+
+    assert lines[0].split() == ["JOBID", "PARTITION", "NAME", "USER", "ST", "TIME", "NODES", "NODELIST(REASON)"]
+    assert "123457" in lines[1]
+    assert "CPU2" in lines[1]
+    assert "pending" in lines[1]
+    assert "PD" in lines[1]
+    assert "0:00" in lines[1]
+    assert "(Priority)" in lines[1]
+    assert "123456" in lines[2]
+    assert "R" in lines[2]
+    assert "00:01:02" in lines[2]
+    assert "node[01-02]" in lines[2]
+
+
+def test_cjobs_recent_no_header(isolated_home):
+    with connect() as conn:
+        init_db(conn)
+        conn.execute(
+            "insert into jobs (job_id, submitted_at, state, created_at, updated_at) "
+            "values ('123456', '2026-05-17T01:02:03', 'COMPLETED', 't', 't')"
+        )
+
+    text = recent_jobs(10, no_header=True)
+
+    assert "JOBID" not in text
+    assert "123456" in text
+    assert "CD" in text
 
 
 def test_cjobs_events_files_and_commands_return_tables(isolated_home):
