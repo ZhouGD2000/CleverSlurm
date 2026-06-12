@@ -1,4 +1,5 @@
 import sqlite3
+import os
 from pathlib import Path
 
 from cslurm.config import db_path, root_dir
@@ -172,9 +173,22 @@ JOB_COLUMNS = [
 ]
 
 
+DEFAULT_BUSY_TIMEOUT_MS = 30000
+
+
+def _busy_timeout_ms() -> int:
+    value = os.environ.get("CSLURM_DB_BUSY_TIMEOUT_MS")
+    if value is None:
+        return DEFAULT_BUSY_TIMEOUT_MS
+    return max(0, int(value))
+
+
 def connect(path: Path | None = None) -> sqlite3.Connection:
     root_dir().mkdir(parents=True, exist_ok=True)
-    conn = sqlite3.connect(path or db_path())
+    conn = sqlite3.connect(path or db_path(), timeout=_busy_timeout_ms() / 1000)
+    conn.execute(f"pragma busy_timeout = {_busy_timeout_ms()}")
+    conn.execute("pragma journal_mode = wal")
+    conn.execute("pragma synchronous = normal")
     conn.row_factory = sqlite3.Row
     return conn
 
