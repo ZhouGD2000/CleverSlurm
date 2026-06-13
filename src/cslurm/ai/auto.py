@@ -3,7 +3,7 @@ import sys
 
 from cslurm.ai.summarize import summarize_submission
 from cslurm.config import ai_auto_summary_enabled
-from cslurm.db import connect, init_db
+from cslurm.db import run_write_transaction
 
 
 def _now() -> str:
@@ -11,8 +11,7 @@ def _now() -> str:
 
 
 def record_auto_summary_failure(job_id: str, exc: Exception) -> None:
-    with connect() as conn:
-        init_db(conn)
+    def record(conn):
         conn.execute(
             """
             insert into job_events (job_id, event_time, event_type, raw_output)
@@ -20,13 +19,14 @@ def record_auto_summary_failure(job_id: str, exc: Exception) -> None:
             """,
             (job_id, _now(), "AI_SUMMARY_FAILED", f"{type(exc).__name__}: {exc}"),
         )
-        conn.commit()
+
+    run_write_transaction(record)
 
 
 def record_auto_summary_queued(job_id: str, *, pid: int | None = None) -> None:
     raw_output = f"pid={pid}" if pid is not None else None
-    with connect() as conn:
-        init_db(conn)
+
+    def record(conn):
         conn.execute(
             """
             insert into job_events (job_id, event_time, event_type, raw_output)
@@ -34,7 +34,8 @@ def record_auto_summary_queued(job_id: str, *, pid: int | None = None) -> None:
             """,
             (job_id, _now(), "AI_SUMMARY_QUEUED", raw_output),
         )
-        conn.commit()
+
+    run_write_transaction(record)
 
 
 def auto_summarize_submission(job_id: str) -> str:

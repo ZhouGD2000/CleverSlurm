@@ -35,6 +35,34 @@ def test_csrun_records_standalone_fake_srun_execution(isolated_home, fake_bin, t
     assert event[2].startswith("ran python script.py\n")
 
 
+def test_csrun_records_through_write_transaction(isolated_home, fake_bin, tmp_path, monkeypatch):
+    write_executable(
+        fake_bin / "srun",
+        "#!/bin/sh\nprintf 'ran\\n'\n",
+    )
+    monkeypatch.chdir(tmp_path)
+
+    import cslurm.cli.csrun as csrun
+
+    original = csrun.run_write_transaction
+    calls = 0
+
+    def tracking(write):
+        nonlocal calls
+        calls += 1
+        return original(write)
+
+    monkeypatch.setattr(csrun, "run_write_transaction", tracking)
+
+    csrun.run_job(["python", "script.py"])
+
+    with sqlite3.connect(isolated_home / "db.sqlite") as conn:
+        count = conn.execute("select count(*) from jobs").fetchone()[0]
+
+    assert calls == 1
+    assert count == 1
+
+
 def test_csrun_module_entrypoint_forwards_output_and_exit_code(isolated_home, fake_bin):
     write_executable(
         fake_bin / "srun",

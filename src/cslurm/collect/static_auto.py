@@ -4,7 +4,7 @@ import sys
 
 from cslurm.collect.static.storage import insert_static_commands
 from cslurm.config import root_dir, static_analysis_enabled
-from cslurm.db import connect, init_db
+from cslurm.db import connect, init_db, run_write_transaction
 
 
 def _now() -> str:
@@ -12,8 +12,7 @@ def _now() -> str:
 
 
 def _record_event(job_id: str, event_type: str, raw_output: str | None = None) -> None:
-    with connect() as conn:
-        init_db(conn)
+    def record(conn):
         conn.execute(
             """
             insert into job_events (job_id, event_time, event_type, raw_output)
@@ -21,7 +20,8 @@ def _record_event(job_id: str, event_type: str, raw_output: str | None = None) -
             """,
             (job_id, _now(), event_type, raw_output),
         )
-        conn.commit()
+
+    run_write_transaction(record)
 
 
 def record_static_analysis_failure(job_id: str, exc: Exception) -> None:

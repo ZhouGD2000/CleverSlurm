@@ -3,7 +3,7 @@ import subprocess
 from datetime import datetime, timezone
 
 from cslurm.config import command_path
-from cslurm.db import connect, init_db
+from cslurm.db import run_write_transaction
 
 
 def _now() -> str:
@@ -35,8 +35,7 @@ def run_job(argv: list[str], *, capture_output: bool = True) -> subprocess.Compl
         result = subprocess.run([command_path("srun"), *argv], check=False, text=True)
     state = "COMPLETED" if result.returncode == 0 else "FAILED"
 
-    with connect() as conn:
-        init_db(conn)
+    def record(conn):
         conn.execute(
             """
             insert or replace into jobs (
@@ -52,7 +51,8 @@ def run_job(argv: list[str], *, capture_output: bool = True) -> subprocess.Compl
             """,
             (job_id, timestamp, state, srun_command, cwd, (result.stdout or "") + (result.stderr or "")),
         )
-        conn.commit()
+
+    run_write_transaction(record)
 
     return result
 

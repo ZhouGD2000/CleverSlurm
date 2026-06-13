@@ -2,7 +2,7 @@ import os
 import re
 from datetime import datetime, timezone
 
-from cslurm.db import connect, init_db
+from cslurm.db import run_write_transaction
 from cslurm.slurm.commands import run_slurm_command
 
 
@@ -49,8 +49,8 @@ def cancel_job(argv: list[str]):
 
     job_id = _infer_job_id(passthrough)
     command = "scancel " + " ".join(passthrough)
-    with connect() as conn:
-        init_db(conn)
+
+    def record(conn):
         conn.execute(
             """
             insert into job_events (job_id, event_time, event_type, command, cwd, note, raw_output)
@@ -66,7 +66,8 @@ def cancel_job(argv: list[str]):
                 result.stdout + result.stderr,
             ),
         )
-        conn.commit()
+
+    run_write_transaction(record)
     return result
 
 

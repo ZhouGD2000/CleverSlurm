@@ -1,6 +1,9 @@
 import sqlite3
 import os
+import time
+from collections.abc import Callable
 from pathlib import Path
+from typing import TypeVar
 
 from cslurm.config import db_path, root_dir
 
@@ -174,6 +177,13 @@ JOB_COLUMNS = [
 
 
 DEFAULT_BUSY_TIMEOUT_MS = 30000
+DEFAULT_LOCK_RETRY_SECONDS = 120
+LOCKED_ERROR_MARKERS = (
+    "database is locked",
+    "database table is locked",
+    "database is busy",
+)
+T = TypeVar("T")
 
 
 def _busy_timeout_ms() -> int:
@@ -181,6 +191,18 @@ def _busy_timeout_ms() -> int:
     if value is None:
         return DEFAULT_BUSY_TIMEOUT_MS
     return max(0, int(value))
+
+
+def _lock_retry_seconds() -> float:
+    value = os.environ.get("CSLURM_DB_LOCK_RETRY_SECONDS")
+    if value is None:
+        return DEFAULT_LOCK_RETRY_SECONDS
+    return max(0.0, float(value))
+
+
+def _is_locked_error(exc: sqlite3.OperationalError) -> bool:
+    message = str(exc).lower()
+    return any(marker in message for marker in LOCKED_ERROR_MARKERS)
 
 
 def connect(path: Path | None = None) -> sqlite3.Connection:
@@ -191,6 +213,28 @@ def connect(path: Path | None = None) -> sqlite3.Connection:
     conn.execute("pragma synchronous = normal")
     conn.row_factory = sqlite3.Row
     return conn
+
+
+def run_write_transaction(
+    write: Callable[[sqlite3.Connection], T],
+    *,
+    retry_seconds: float | None = None,
+    sleep: Callable[[float], None] = time.sleep,
+) -> T:
+    deadline = time.monotonic() + (_lock_retry_seconds() if retry_seconds is None else retry_seconds)
+    delay = 0.05
+    while True:
+        try:
+            with connect() as conn:
+                init_db(conn)
+                result = write(conn)
+                conn.commit()
+                return result
+        except sqlite3.OperationalError as exc:
+            if not _is_locked_error(exc) or time.monotonic() >= deadline:
+                raise
+            sleep(delay)
+            delay = min(delay * 2, 2.0)
 
 
 def init_db(conn: sqlite3.Connection) -> None:

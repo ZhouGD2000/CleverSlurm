@@ -11,7 +11,7 @@ from cslurm.collect.git import collect_git_metadata
 from cslurm.collect.static_auto import record_static_analysis_failure, record_static_analysis_queued
 from cslurm.ai.auto import record_auto_summary_failure, record_auto_summary_queued
 from cslurm.config import ai_auto_summary_enabled, root_dir, static_analysis_enabled
-from cslurm.db import connect, init_db
+from cslurm.db import run_write_transaction
 from cslurm.slurm.commands import run_slurm_command
 from cslurm.slurm.sbatch_options import (
     SBATCH_LONG_OPTIONS_WITH_ARG,
@@ -240,8 +240,7 @@ def submit_batch_result(argv: list[str]) -> BatchSubmission:
         or stdout_path
     )
 
-    with connect() as conn:
-        init_db(conn)
+    def record_submission(conn):
         conn.execute(
             """
             insert or replace into jobs (
@@ -297,7 +296,8 @@ def submit_batch_result(argv: list[str]) -> BatchSubmission:
             relpath="instrumented.slurm",
             role="instrumented_script",
         )
-        conn.commit()
+
+    run_write_transaction(record_submission)
 
     launch_static_analysis(job_id)
     launch_auto_summary(job_id)

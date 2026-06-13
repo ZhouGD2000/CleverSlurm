@@ -25,6 +25,15 @@ store/sha256/
 config.toml
 ```
 
+SQLite write contention can happen when many `csbatch`, `csrun`, `ctrack`, and background workers write the same database at once. CleverSlurm enables WAL mode and waits for locked databases by default. Tune the waits if very large submission bursts still hit `database is locked`:
+
+```bash
+export CSLURM_DB_BUSY_TIMEOUT_MS=60000
+export CSLURM_DB_LOCK_RETRY_SECONDS=300
+```
+
+`CSLURM_DB_BUSY_TIMEOUT_MS` controls SQLite's per-lock busy timeout. `CSLURM_DB_LOCK_RETRY_SECONDS` controls CleverSlurm's outer retry loop for short write transactions.
+
 ## Slurm Command Paths
 
 By default, commands are resolved from `PATH`.
