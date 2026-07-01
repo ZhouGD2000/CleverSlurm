@@ -4,6 +4,7 @@ from datetime import datetime, timezone
 from typing import Any
 
 from cslurm.config import notification_ai_analysis_enabled
+from cslurm.db import connect, init_db, run_write_transaction
 from cslurm.notify.analysis import analyze_job, record_job_analysis
 from cslurm.notify.semantic import merge_ai_analysis, request_ai_semantic_analysis, should_run_ai_analysis
 
@@ -87,6 +88,34 @@ def process_job_completion(conn, job_id: str, event_id: int | None = None) -> in
             )
     record_job_analysis(conn, analysis, ai_analysis=ai_analysis)
     return enqueue_job_notification(conn, analysis, event_id=event_id)
+
+
+def process_job_completion_standalone(job_id: str, event_id: int | None = None) -> int:
+    ai_analysis = None
+    ai_error: Exception | None = None
+    with connect() as conn:
+        init_db(conn)
+        analysis = analyze_job(conn, job_id)
+        if notification_ai_analysis_enabled() and should_run_ai_analysis(analysis):
+            try:
+                ai_analysis = request_ai_semantic_analysis(conn, job_id, analysis)
+                analysis = merge_ai_analysis(analysis, ai_analysis)
+            except Exception as exc:
+                ai_error = exc
+
+    def record(conn):
+        if ai_error is not None:
+            conn.execute(
+                """
+                insert into job_events (job_id, event_time, event_type, raw_output)
+                values (?, ?, ?, ?)
+                """,
+                (job_id, _now(), "AI_LOG_ANALYSIS_FAILED", f"{type(ai_error).__name__}: {ai_error}"),
+            )
+        record_job_analysis(conn, analysis, ai_analysis=ai_analysis)
+        return enqueue_job_notification(conn, analysis, event_id=event_id)
+
+    return run_write_transaction(record)
 
 
 def pending_notifications(conn, *, limit: int = 50) -> list[dict[str, Any]]:

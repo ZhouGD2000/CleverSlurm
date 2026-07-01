@@ -2,7 +2,7 @@ from datetime import datetime, timezone
 
 from cslurm.config import notification_auto_dispatch_enabled
 from cslurm.db import connect, init_db
-from cslurm.notify.dispatcher import process_job_completion
+from cslurm.notify.dispatcher import process_job_completion_standalone
 from cslurm.notify.feishu import dispatch_pending
 from cslurm.runtime.ingest import ingest_runtime_commands, ingest_runtime_finish
 from cslurm.slurm.commands import run_slurm_command
@@ -67,6 +67,7 @@ def _dispatch_due_notifications() -> None:
 
 
 def track_once() -> None:
+    completed_jobs: list[tuple[str, int]] = []
     with connect() as conn:
         init_db(conn)
         jobs = conn.execute(
@@ -133,20 +134,25 @@ def track_once() -> None:
                     (job["job_id"], timestamp, "STATE_CHANGED", f"{old_state} -> {new_state}"),
                 )
                 if _normalize_state(new_state) in TERMINAL_STATES:
-                    try:
-                        process_job_completion(conn, job["job_id"], event_id=int(cursor.lastrowid))
-                    except Exception as exc:
-                        conn.execute(
-                            """
-                            insert into job_events (job_id, event_time, event_type, raw_output)
-                            values (?, ?, ?, ?)
-                            """,
-                            (
-                                job["job_id"],
-                                timestamp,
-                                "NOTIFICATION_ANALYSIS_FAILED",
-                                f"{type(exc).__name__}: {exc}",
-                            ),
-                        )
+                    completed_jobs.append((job["job_id"], int(cursor.lastrowid)))
         conn.commit()
+    for job_id, event_id in completed_jobs:
+        try:
+            process_job_completion_standalone(job_id, event_id=event_id)
+        except Exception as exc:
+            with connect() as conn:
+                init_db(conn)
+                conn.execute(
+                    """
+                    insert into job_events (job_id, event_time, event_type, raw_output)
+                    values (?, ?, ?, ?)
+                    """,
+                    (
+                        job_id,
+                        _now(),
+                        "NOTIFICATION_ANALYSIS_FAILED",
+                        f"{type(exc).__name__}: {exc}",
+                    ),
+                )
+                conn.commit()
     _dispatch_due_notifications()

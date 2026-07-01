@@ -58,3 +58,52 @@ def test_tracker_parses_real_sacct_no_header_output(isolated_home, fake_bin):
         ).fetchone()
 
     assert tuple(job) == ("COMPLETED", "0:0", "00:00:03", "12M", "node001")
+
+
+def test_tracker_runs_ai_analysis_after_state_transaction_commits(isolated_home, fake_bin, monkeypatch):
+    from cslurm.db import connect, init_db, run_write_transaction
+    from cslurm.slurm.tracker import track_once
+
+    monkeypatch.setenv("CSLURM_NOTIFICATION_AI_ANALYSIS", "true")
+    monkeypatch.setenv("CSLURM_NOTIFICATION_AUTO_DISPATCH", "false")
+    monkeypatch.setenv("CSLURM_DB_LOCK_RETRY_SECONDS", "0")
+    write_executable(
+        fake_bin / "sacct",
+        "#!/bin/sh\nprintf 'JobID|State|ExitCode|DerivedExitCode|Elapsed|MaxRSS|NodeList\\n123456|FAILED|1:0|1:0|00:00:03|12M|node001\\n'\n",
+    )
+
+    with connect() as conn:
+        init_db(conn)
+        conn.execute(
+            "insert into jobs (job_id, submitted_at, submit_cwd, command, state, created_at, updated_at) "
+            "values ('123456', 't', '/tmp', 'csbatch job.slurm', 'UNKNOWN', 't', 't')"
+        )
+
+    def fake_ai_analysis(conn, job_id, analysis):
+        def write_marker(write_conn):
+            write_conn.execute(
+                "insert into job_events (job_id, event_time, event_type, raw_output) values (?, ?, ?, ?)",
+                (job_id, "t", "AI_MARKER_WRITE", "ok"),
+            )
+
+        run_write_transaction(write_marker, retry_seconds=0)
+        return {
+            "semantic_status": "semantic_failed",
+            "failure_category": "LOG_ERROR_PATTERN",
+            "severity": "high",
+            "confidence": 0.9,
+            "recommended_notification": "immediate",
+        }
+
+    monkeypatch.setattr("cslurm.notify.dispatcher.request_ai_semantic_analysis", fake_ai_analysis)
+
+    track_once()
+
+    with connect() as conn:
+        event = conn.execute(
+            "select event_type from job_events where job_id = '123456' and event_type = 'AI_MARKER_WRITE'"
+        ).fetchone()
+        notification = conn.execute("select status from notifications where job_id = '123456'").fetchone()
+
+    assert tuple(event) == ("AI_MARKER_WRITE",)
+    assert tuple(notification) == ("pending",)
