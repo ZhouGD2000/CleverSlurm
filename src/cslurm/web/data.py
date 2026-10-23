@@ -78,10 +78,14 @@ def list_jobs(*, search="", state="", partition="", limit=25, offset=0):
     if search:
         conditions.append("(instr(lower(job_id), ?) > 0 or instr(lower(coalesce(job_name, '')), ?) > 0 or instr(lower(coalesce(command, '')), ?) > 0)")
         values.extend([search.lower()] * 3)
-    if state:
-        states = sorted(ACTIVE_STATES) if state == "active" else sorted(FAILED_STATES) if state == "failed" else [state]
+    states = set()
+    for selected in state.split(","):
+        selected = selected.strip()
+        if selected:
+            states.update(ACTIVE_STATES if selected == "active" else FAILED_STATES if selected == "failed" else {selected})
+    if states:
         conditions.append("normalized_state(state) in (" + ",".join("?" for _ in states) + ")")
-        values.extend(states)
+        values.extend(sorted(states))
     if partition_names(partition):
         conditions.append("partition_matches(partition, ?)")
         values.append(partition)

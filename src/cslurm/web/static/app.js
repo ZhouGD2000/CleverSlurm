@@ -16,6 +16,7 @@ const state = {
   reloadPending: false,
   detailVersion: 0,
   partitions: new Set(),
+  statuses: new Set(),
 };
 const fromLink = new URLSearchParams(location.hash.slice(1)).get("token");
 if (fromLink) {
@@ -122,26 +123,38 @@ function setBusy(busy) {
   for (const button of document.querySelectorAll("[data-operation]"))
     button.disabled = disabled || button.dataset.blocked === "true";
 }
-function renderPartitions() {
-  const options = $("partition-options");
-  const names = [...new Set([...(state.overview?.partitions || []), ...state.partitions])].sort();
+function renderCheckboxFilter(id, selected, names, noun, labels = {}) {
+  const options = $(id + "-options");
+  const all = "全部" + noun;
   const key = JSON.stringify(names);
   if (options.dataset.options !== key) {
     options.dataset.options = key;
     options.replaceChildren(...["", ...names].map((name) => {
-      const label = el("label", "partition-option");
+      const label = el("label", "checkbox-option");
       const checkbox = document.createElement("input");
       checkbox.type = "checkbox";
       checkbox.value = name;
-      label.append(checkbox, el("span", "", name || "全部分区"));
+      label.append(checkbox, el("span", "", name ? labels[name] || name : all));
       return label;
     }));
   }
   for (const input of options.querySelectorAll("input"))
-    input.checked = input.value ? state.partitions.has(input.value) : state.partitions.size === 0;
-  $("partition-caption").textContent = state.partitions.size === 0
-    ? "全部分区" : state.partitions.size === 1 ? [...state.partitions][0] : `分区 (${state.partitions.size})`;
-  $("partition-button").title = [...state.partitions].join(", ") || "全部分区";
+    input.checked = input.value ? selected.has(input.value) : selected.size === 0;
+  const titles = [...selected].map((name) => labels[name] || name);
+  $(id + "-caption").textContent = selected.size === 0
+    ? all : selected.size === 1 ? titles[0] : `${noun} (${selected.size})`;
+  $(id + "-button").title = titles.join(", ") || all;
+}
+function renderPartitions() {
+  const names = [...new Set([...(state.overview?.partitions || []), ...state.partitions])].sort();
+  renderCheckboxFilter("partition", state.partitions, names, "分区");
+}
+function renderStates() {
+  const names = [...new Set([
+    "active", "failed", "RUNNING", "PENDING", "COMPLETED", "FAILED", "CANCELLED", "TIMEOUT", "UNKNOWN",
+    ...Object.keys(state.overview?.states || {}), ...state.statuses,
+  ])];
+  renderCheckboxFilter("state", state.statuses, names, "状态", {active: "活动任务", failed: "异常退出"});
 }
 async function load() {
   if (!state.token) return;
@@ -153,7 +166,7 @@ async function load() {
   try {
     const query = new URLSearchParams({
       search: $("search").value.trim(),
-      state: $("state").value,
+      state: [...state.statuses].join(","),
       partition: [...state.partitions].join(","),
       offset: state.offset,
       limit: state.limit,
@@ -216,6 +229,7 @@ async function load() {
         : "";
     show($("notice"), !!$("notice").textContent);
     renderPartitions();
+    renderStates();
     if (state.offset && !result.items.length && result.total <= state.offset) {
       state.offset = 0;
       state.loading = false;
@@ -614,10 +628,9 @@ async function watch(id) {
     if (state.selected) await selectJob(state.selected, false);
   }
 }
-function filter(view) {
-  if (![...$("state").options].some((o) => o.value === view) && view !== "all")
-    return;
-  $("state").value = view === "all" ? "" : view;
+function updateStateView() {
+  const view = state.statuses.size === 0 ? "all"
+    : state.statuses.size === 1 ? [...state.statuses][0] : "custom";
   $("view-title").textContent =
     {
       all: "全部任务",
@@ -628,6 +641,11 @@ function filter(view) {
   document
     .querySelectorAll(".nav[data-view]")
     .forEach((b) => b.classList.toggle("active", b.dataset.view === view));
+  renderStates();
+}
+function filter(view) {
+  state.statuses = new Set(view === "all" ? [] : [view]);
+  updateStateView();
   state.offset = 0;
   load();
 }
@@ -661,27 +679,29 @@ $("search").addEventListener("input", () => {
     load();
   }, 300);
 });
-$("state").addEventListener("change", () => filter($("state").value || "all"));
-$("partition-options").addEventListener("change", (event) => {
-  const input = event.target;
-  if (!input.matches('input[type="checkbox"]')) return;
-  if (!input.value) state.partitions.clear();
-  else if (input.checked) state.partitions.add(input.value);
-  else state.partitions.delete(input.value);
-  renderPartitions();
-  state.offset = 0;
-  load();
-});
-document.addEventListener("click", (event) => {
-  if (!$("partition").contains(event.target)) $("partition").open = false;
-});
-$("partition").addEventListener("keydown", (event) => {
-  if (event.key === "Escape") {
-    event.preventDefault();
-    $("partition").open = false;
-    $("partition-button").focus();
-  }
-});
+for (const [id, key] of [["state", "statuses"], ["partition", "partitions"]]) {
+  $(id + "-options").addEventListener("change", (event) => {
+    const input = event.target;
+    if (!input.matches('input[type="checkbox"]')) return;
+    if (!input.value) state[key].clear();
+    else if (input.checked) state[key].add(input.value);
+    else state[key].delete(input.value);
+    if (id === "state") updateStateView();
+    else renderPartitions();
+    state.offset = 0;
+    load();
+  });
+  document.addEventListener("click", (event) => {
+    if (!$(id).contains(event.target)) $(id).open = false;
+  });
+  $(id).addEventListener("keydown", (event) => {
+    if (event.key === "Escape") {
+      event.preventDefault();
+      $(id).open = false;
+      $(id + "-button").focus();
+    }
+  });
+}
 $("clear-filters").addEventListener("click", () => {
   $("search").value = "";
   state.partitions.clear();

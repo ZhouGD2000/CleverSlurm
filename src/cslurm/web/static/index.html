@@ -121,18 +121,12 @@
                     placeholder="搜索 Job ID、名称或命令"
                     autocomplete="off"
                   /><kbd>/</kbd></label
-                ><select id="state" aria-label="按状态筛选">
-                  <option value="">全部状态</option>
-                  <option value="active">活动任务</option>
-                  <option value="RUNNING">RUNNING</option>
-                  <option value="PENDING">PENDING</option>
-                  <option value="COMPLETED">COMPLETED</option>
-                  <option value="failed">异常退出</option>
-                  <option value="CANCELLED">CANCELLED</option>
-                  <option value="UNKNOWN">UNKNOWN</option></select
-                ><details id="partition" class="partition-filter">
+                ><details id="state" class="checkbox-filter">
+                  <summary id="state-button" aria-label="按状态筛选"><span id="state-caption">全部状态</span></summary>
+                  <div id="state-options" class="checkbox-options" role="group" aria-label="状态选项"></div>
+                </details><details id="partition" class="checkbox-filter">
                   <summary id="partition-button" aria-label="按分区筛选"><span id="partition-caption">全部分区</span></summary>
-                  <div id="partition-options" class="partition-options" role="group" aria-label="分区选项"></div>
+                  <div id="partition-options" class="checkbox-options" role="group" aria-label="分区选项"></div>
                 </details><button
                   type="button"
                   class="icon-button"

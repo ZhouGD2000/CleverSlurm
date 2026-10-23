@@ -12,6 +12,15 @@ match `CPU2`). Selecting "All partitions" or clearing all checks removes the
 partition restriction, including jobs without a recorded partition. Filtering
 does not change the job's original partition value.
 
+The state filter also supports multiple checkboxes, including individual states
+and the Active / Abnormal exit groups. Selections within each filter use OR;
+state and partition filters combine with AND. For example, selecting `RUNNING`
+and `PENDING`, plus `CPU` and `CPU2`, lists running or pending jobs in either
+partition. Overlapping state groups do not duplicate jobs. "All states" (or no
+checked states) removes only the state restriction, leaving partition selections
+in place. Sidebar shortcuts replace the state selection but keep the partition
+filter. Refreshing records preserves both selections.
+
 ## Install and start
 
 Use the same environment as your other CleverSlurm commands:

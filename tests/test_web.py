@@ -120,6 +120,41 @@ def test_partition_checkboxes_match_individual_names_and_union(server):
     assert ids('partition=%27%20OR%201=1--')[1] == 0
 
 
+def test_state_checkboxes_union_and_intersect_partitions(server):
+    with closing(connect()) as conn:
+        conn.executemany("insert into jobs (job_id,partition,state) values (?,?,?)", [
+            ('103', 'cpu,gpu', 'PENDING'), ('104', 'cpu2', 'FAILED+'),
+            ('105', 'gpu', 'CANCELLED by 1234'), ('106', 'cpu', 'TIMEOUT'),
+            ('107', None, None), ('108', 'cpu', 'COMPLETING'),
+        ])
+        conn.commit()
+
+    def ids(query):
+        code, result = request(server, '/api/jobs?' + query)
+        assert code == 200
+        return {job['job_id'] for job in result['items']}, result['total']
+
+    assert ids('state=RUNNING,PENDING')[0] == {'100', '102', '103'}
+    assert ids('state=RUNNING,RUNNING')[1] == 2
+    assert ids('state=active,RUNNING')[0] == {'100', '102', '103', '108'}
+    assert ids('state=failed,TIMEOUT')[0] == {'104', '106'}
+    assert ids('state=FAILED,CANCELLED')[0] == {'104', '105'}
+    assert ids('state=RUNNING,PENDING&partition=cpu,gpu')[0] == {'100', '102', '103'}
+    assert ids('state=RUNNING,PENDING&partition=gpu')[0] == {'103'}
+    assert ids('state=failed,CANCELLED&partition=cpu2,gpu')[0] == {'104', '105'}
+    assert ids('state=RUNNING,PENDING&partition=cpu2')[1] == 0
+    assert ids('state=RUNNING,PENDING&partition=cpu,gpu&search=100')[0] == {'100'}
+    assert ids('state=RUNNING,PENDING&partition=cpu,gpu&limit=1&offset=1')[1] == 3
+    assert len(ids('state=RUNNING,PENDING&limit=1&offset=1')[0]) == 1
+    assert ids('state=UNKNOWN')[0] == {'107'}
+    assert ids('state=')[1] == 9
+    assert ids('state=,%20,')[1] == 9
+    assert ids('state=%20RUNNING%20,PENDING,')[1] == 3
+    assert ids('state=%27%20OR%201=1--')[1] == 0
+    assert ids('state=NOT_A_STATE')[1] == 0
+    assert ids('state=&partition=gpu')[0] == {'101', '103', '105'}
+
+
 def test_read_only_and_demo_reject_operations(web_db):
     for operations in [Operations(read_only=True, allow_cancel=True), Operations(demo=True, allow_cancel=True)]:
         for action in ["refresh", "ask", "summarize", "cancel"]:

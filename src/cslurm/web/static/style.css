@@ -450,13 +450,13 @@ input[type="checkbox"] {
   height: 33px;
   gap: 7px;
 }
-.partition-filter {
+.checkbox-filter {
   position: relative;
   width: 136px;
   flex: 0 0 136px;
   font-size: 12px;
 }
-.partition-filter summary {
+.checkbox-filter summary {
   display: flex;
   align-items: center;
   justify-content: space-between;
@@ -469,11 +469,11 @@ input[type="checkbox"] {
   cursor: pointer;
   list-style: none;
 }
-.partition-filter summary::-webkit-details-marker { display: none; }
-.partition-filter summary::after { content: ""; width: 7px; height: 7px; border-right: 1px solid currentColor; border-bottom: 1px solid currentColor; transform: rotate(45deg); flex-shrink: 0; }
-.partition-filter summary:focus-visible { outline: 2px solid #23836a; outline-offset: 2px; }
-#partition-caption { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.partition-options {
+.checkbox-filter summary::-webkit-details-marker { display: none; }
+.checkbox-filter summary::after { content: ""; width: 7px; height: 7px; border-right: 1px solid currentColor; border-bottom: 1px solid currentColor; transform: rotate(45deg); flex-shrink: 0; }
+.checkbox-filter summary:focus-visible { outline: 2px solid #23836a; outline-offset: 2px; }
+.checkbox-filter summary span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.checkbox-options {
   position: absolute;
   top: calc(100% + 6px);
   right: 0;
@@ -488,13 +488,13 @@ input[type="checkbox"] {
   background: white;
   box-shadow: 0 5px 18px #162b201a;
 }
-.partition-option { display: flex; align-items: center; gap: 10px; min-height: 34px; padding: 6px 9px; cursor: pointer; }
-.partition-option:hover { background: #edf5ef; }
-.partition-option span { min-width: 0; overflow-wrap: anywhere; }
-.partition-option input { flex-shrink: 0; }
-.partition-option:first-child { border-bottom: 1px solid var(--line); margin-bottom: 4px; }
+.checkbox-option { display: flex; align-items: center; gap: 10px; min-height: 34px; padding: 6px 9px; cursor: pointer; }
+.checkbox-option:hover { background: #edf5ef; }
+.checkbox-option span { min-width: 0; overflow-wrap: anywhere; }
+.checkbox-option input { flex-shrink: 0; }
+.checkbox-option:first-child { border-bottom: 1px solid var(--line); margin-bottom: 4px; }
 @media (max-width: 600px) {
-  .partition-options { width: 100%; }
+  .checkbox-options { width: 100%; }
 }
 .search img {
   width: 13px;
