@@ -1,7 +1,24 @@
 import os
 import json
 import ast
+from contextvars import ContextVar
+from functools import wraps
 from pathlib import Path
+
+
+_config_snapshot = ContextVar("cslurm_config_snapshot", default=None)
+
+
+def consistent_config(function):
+    """Use one file revision for related endpoint, credential and policy reads."""
+    @wraps(function)
+    def wrapped(*args, **kwargs):
+        token = _config_snapshot.set(load_config())
+        try:
+            return function(*args, **kwargs)
+        finally:
+            _config_snapshot.reset(token)
+    return wrapped
 
 
 def _env(name: str) -> str | None:
@@ -29,12 +46,19 @@ def config_path() -> Path:
 
 
 def load_config() -> dict:
+    snapshot = _config_snapshot.get()
+    if snapshot is not None:
+        return snapshot
     path = config_path()
     if not path.exists():
         return {}
+    return parse_config(path.read_text())
+
+
+def parse_config(text: str) -> dict:
     config: dict[str, dict[str, str]] = {}
     section: str | None = None
-    for raw_line in path.read_text().splitlines():
+    for raw_line in text.splitlines():
         line = raw_line.strip()
         if not line or line.startswith("#"):
             continue

@@ -450,6 +450,27 @@ input[type="checkbox"] {
   height: 33px;
   gap: 7px;
 }
+.settings-dialog { width: 760px; max-width: calc(100vw - 24px); max-height: calc(100dvh - 32px); overflow-y: auto; }
+.settings-dialog h2 { font-size: 19px; }
+.settings-tabs { display: flex; gap: 8px; border-bottom: 1px solid var(--line); margin-bottom: 18px; }
+.settings-tabs button { border: 0; border-radius: 0; background: none; padding: 12px; }
+.settings-tabs [aria-selected="true"] { border-bottom: 2px solid #357c60; color: #286448; }
+.settings-profile-bar { display: flex; align-items: center; gap: 10px; margin-bottom: 18px; }
+.settings-profile-bar select { flex: 1; min-width: 0; }
+.settings-fields { border: 0; padding: 0; margin: 18px 0; display: grid; grid-template-columns: minmax(0,1fr) minmax(0,1fr); gap: 18px 24px; }
+.settings-field { display: flex; flex-direction: column; align-items: start; gap: 7px; min-width: 0; margin: 0; font-size: 12px; color: #4f6258; }
+.settings-dialog input[type="checkbox"] { width: 14px; height: 14px; padding: 0; margin: 0; }
+.settings-field input:not([type="checkbox"]), .settings-field select { width: 100%; min-width: 0; padding: 9px 10px; border: 1px solid var(--line); border-radius: 5px; background: white; color: #263a30; height: 37px; }
+.settings-clear { display: flex; gap: 6px; align-items: center; margin-top: 7px; font-size: 11px; color: #7b5353; }
+.settings-warning { font-size: 12px; color: #7c5719; overflow-wrap: anywhere; }
+.settings-actions { display: flex; gap: 10px; justify-content: flex-end; padding-top: 16px; border-top: 1px solid var(--line); flex-wrap: wrap; }
+.settings-actions button { min-height: 36px; padding: 8px 12px; }
+#settings-result { min-height: 20px; font-size: 12px; overflow-wrap: anywhere; }
+@media (max-width: 600px) {
+  .settings-fields { grid-template-columns: minmax(0,1fr); }
+  .settings-tabs { gap: 0; }
+  .settings-tabs button { padding: 10px; }
+}
 .checkbox-filter {
   position: relative;
   width: 136px;

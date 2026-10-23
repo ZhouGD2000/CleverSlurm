@@ -10,6 +10,7 @@ from datetime import datetime, timedelta, timezone
 from typing import Any
 
 from cslurm.config import (
+    consistent_config,
     feishu_message_format,
     feishu_secret,
     feishu_webhook_url,
@@ -314,6 +315,7 @@ def _dispatch_immediate(conn, *, limit: int, urlopen, webhook_url: str, secret: 
     return sent
 
 
+@consistent_config
 def dispatch_pending(*, limit: int = 500, mode: str = "immediate", force: bool = False, urlopen=None) -> int:
     if not notification_enabled():
         return 0

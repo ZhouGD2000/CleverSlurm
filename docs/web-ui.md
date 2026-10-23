@@ -107,6 +107,51 @@ encryption between your computer and the server.
 
 ## Views
 
+### Model and notification settings
+
+The settings button in the top bar opens AI models, Feishu bots, and notification
+policy. The current configuration comes directly from `config.toml`; no credentials
+need to be re-entered. Named profiles can be added and edited without changing the
+active setup. "Set as current" copies that profile into `[ai]` or
+`[notification.feishu]`, including removing optional settings absent from the
+chosen profile. CLI commands and subsequent tracker/summary processes use these
+same sections. Already-running requests are not restarted.
+Use the copy button to keep the current configuration as a named profile before
+switching. Credentials are copied server-side without being returned to the browser.
+
+Named profiles are stored as `[web.ai.<id>]` and `[web.feishu.<id>]`. Notification
+policy remains global in `[notification]`. Feishu profiles are custom-bot webhook
+destinations, not personal-account logins or an App ID/Secret messaging backend.
+See [Feishu setup](feishu_setup.md) for delivery limitations.
+
+API keys, webhook URLs, signing secrets, and additional request JSON are never
+returned by the settings API. A blank secret field preserves the saved value;
+"Clear saved value" explicitly removes it. Environment variables still take
+precedence for runtime commands; the page lists server-side override variable
+names, not their contents. Named `*_env` references must be available in the
+environment of the process using them (web server and cron may differ).
+
+Saving creates a private backup in `config-backups/`, then atomically replaces
+`config.toml` with mode 0600. Unrelated configuration sections are preserved.
+Concurrent web saves are serialized and stale revisions are rejected. External
+editors should not write the file during a save; reload the page after manual
+edits. Backups contain credentials and must remain private.
+
+Saving or switching does not invoke AI, submit/cancel jobs, dispatch notifications,
+or change historical notification records. Changing notification enablement or
+destination can affect the next normal automatic dispatch, including any pending
+messages; it does not suppress or purge that queue.
+
+Connection tests are separate explicit actions against the selected **saved**
+configuration. AI tests send only a fixed short prompt with a 10-second timeout,
+64-token output budget, no fallback models or retries, and no forced JSON format.
+They verify basic connectivity, not every AI workflow. Feishu tests require a
+confirmation and send one labeled test message, without reading or dispatching
+the notification queue. Errors never return provider response bodies or secrets.
+Read-only and demo modes disable saving, activation, and external tests.
+
+### Tasks
+
 - Task history: search Job ID, name, or submission command; filter by state and
   partition; paginate in groups of 25, 50, or 100.
 - Active tasks and failures: separate filters over the recorded scheduler state.

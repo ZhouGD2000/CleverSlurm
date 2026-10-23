@@ -11,7 +11,7 @@ The design rule is simple: deterministic code records facts; AI only summarizes 
 - `cscancel`: wraps `scancel`, passes through scancel options, and records a cancellation request event with an optional CleverSlurm-only `--note`.
 - `ctrack`: polls `sacct` for known jobs and updates state, exit code, derived exit code, elapsed time, memory, and node list.
 - `cjobs`: queries sacct-like recent history, squeue-like active queues, job details, events, files, recorded commands, log tails, and AI answers over recent job facts.
-- `cweb`: local web console for task history, filters, logs, files, summaries, events, notifications, background tracking/AI operations, and explicitly enabled single-job cancellation.
+- `cweb`: local web console for task history, filters, logs, files, summaries, events, notifications, AI model/Feishu configuration profiles, background tracking/AI operations, and explicitly enabled single-job cancellation.
 - `csummarize`: sends curated job facts to a configured OpenAI-compatible or Anthropic-compatible model API and stores structured AI summaries.
 - Feishu notifications: when `ctrack` sees a terminal job state, it records deterministic/semantic analysis, queues a notification, and immediately sends hard failures through a Feishu/Lark custom bot when configured.
 - Static script analysis: after `csbatch`, a detached worker identifies obvious MATLAB and Python entry commands and records their entry files without wrapping the runtime process.

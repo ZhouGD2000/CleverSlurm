@@ -9,7 +9,7 @@ from pathlib import Path
 from urllib.parse import parse_qs, urlsplit
 
 from cslurm.config import root_dir
-from cslurm.web import data
+from cslurm.web import data, settings
 from cslurm.web.operations import BusyError, Operations
 
 
@@ -81,11 +81,31 @@ class Handler(BaseHTTPRequestHandler):
                 if self.headers.get("Content-Type", "").split(";")[0] != "application/json":
                     raise ValueError("Content-Type must be application/json")
                 size = int(self.headers.get("Content-Length", "0"))
-                if not 0 < size <= 8192:
-                    raise ValueError("Request body must be between 1 and 8192 bytes")
+                maximum = 32768 if url.path.startswith("/api/settings") else 8192
+                if not 0 < size <= maximum:
+                    raise ValueError("Request body outside allowed size")
                 body = json.loads(self.rfile.read(size))
                 if not isinstance(body, dict):
                     raise ValueError("Expected a JSON object")
+                if url.path in {"/api/settings", "/api/settings/test"}:
+                    ops = self.server.operations
+                    if ops.read_only or ops.demo:
+                        raise PermissionError("Read-only/demo mode: configuration changes and tests are disabled")
+                    with ops.lock:
+                        if ops.active or ops.stopping:
+                            raise BusyError("An operation is running; wait before editing configuration")
+                        if url.path == "/api/settings":
+                            self.send(200, settings.save(body))
+                        else:
+                            try:
+                                result = settings.test_connection(body)
+                            except (ValueError, settings.SettingsConflict):
+                                raise
+                            except Exception:
+                                self.send(502, {"error": "连接测试失败或超时，请检查已保存的地址、凭据、模型和网络。"})
+                                return
+                            self.send(200, result)
+                    return
                 if url.path != "/api/operations":
                     raise KeyError("Endpoint not found")
                 if self.server.database_error:
@@ -108,6 +128,8 @@ class Handler(BaseHTTPRequestHandler):
                                 "read_only": ops.read_only, "allow_cancel": ops.allow_cancel,
                                 "demo": ops.demo, "active_operation": ops.active,
                                 "database_error": self.server.database_error})
+            elif url.path == "/api/settings":
+                self.send(200, settings.snapshot())
             elif url.path == "/api/jobs":
                 limit, offset = int(param("limit", "25")), int(param("offset", "0"))
                 if not 1 <= limit <= 100 or not 0 <= offset <= 10000000 or len(url.query) > 4096:
@@ -140,8 +162,11 @@ class Handler(BaseHTTPRequestHandler):
             self.send(404, {"error": exc.args[0]})
         except BusyError as exc:
             self.send(409, {"error": str(exc)})
+        except settings.SettingsConflict as exc:
+            self.send(409, {"error": str(exc)})
         except (ValueError, TypeError):
-            self.send(400, {"error": "Invalid request. Check job ID, confirmation, and input values."})
+            message = "配置无效，请检查接口格式、地址、环境变量名称、数值范围及连接必填项。" if self.path.startswith("/api/settings") else "Invalid request. Check job ID, confirmation, and input values."
+            self.send(400, {"error": message})
         except sqlite3.Error:
             self.send(503, {"error": "Database unavailable. Check permissions and integrity on the server."})
         except (BrokenPipeError, ConnectionResetError, TimeoutError):

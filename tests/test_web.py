@@ -155,6 +155,32 @@ def test_state_checkboxes_union_and_intersect_partitions(server):
     assert ids('state=&partition=gpu')[0] == {'101', '103', '105'}
 
 
+def test_settings_api_auth_readonly_and_conflicts(server, monkeypatch):
+    assert request(server, '/api/settings', auth=False)[0] == 403
+    code, snapshot = request(server, '/api/settings')
+    assert code == 200
+    body = dict(kind='ai', id='new', name='Example', values={'model': 'example', 'api_key': 'never-return'}, revision=snapshot['revision'])
+    assert request(server, '/api/settings', body=body, auth=False)[0] == 403
+    assert request(server, '/api/settings', body=body, headers={'Origin': 'https://evil.invalid'})[0] == 403
+    code, saved = request(server, '/api/settings', body=body)
+    assert code == 200 and 'never-return' not in json.dumps(saved)
+    assert request(server, '/api/settings', body=body)[0] == 409
+    for flag in ['read_only', 'demo']:
+        setattr(server.operations, flag, True)
+        assert request(server, '/api/settings', body={**body, 'revision': saved['revision']})[0] == 403
+        assert request(server, '/api/settings/test', body={**body, 'revision': saved['revision']})[0] == 403
+        setattr(server.operations, flag, False)
+    server.operations.active = 'busy'
+    assert request(server, '/api/settings', body={**body, 'revision': saved['revision']})[0] == 409
+    server.operations.active = None
+    from cslurm.web import settings
+    def fail(_):
+        raise RuntimeError('sensitive-secret-in-provider-error')
+    monkeypatch.setattr(settings, 'test_connection', fail)
+    code, result = request(server, '/api/settings/test', body={**body, 'revision': saved['revision']})
+    assert code == 502 and 'sensitive-secret' not in json.dumps(result)
+
+
 def test_read_only_and_demo_reject_operations(web_db):
     for operations in [Operations(read_only=True, allow_cancel=True), Operations(demo=True, allow_cancel=True)]:
         for action in ["refresh", "ask", "summarize", "cancel"]:

@@ -6,6 +6,7 @@ from urllib.parse import urljoin
 
 from cslurm.ai.json_utils import parse_json_object
 from cslurm.config import (
+    consistent_config,
     ai_anthropic_version,
     ai_api_key,
     ai_base_url,
@@ -58,6 +59,7 @@ def _message_content(message: dict) -> str:
 
 
 class ModelClient:
+    @consistent_config
     def __init__(
         self,
         *,

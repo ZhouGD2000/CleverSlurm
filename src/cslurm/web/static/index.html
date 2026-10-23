@@ -8,6 +8,7 @@
     <link rel="icon" href="/icons/cpu.svg" type="image/svg+xml" />
     <link rel="stylesheet" href="/style.css" />
     <script src="/app.js" defer></script>
+    <script src="/settings.js" defer></script>
   </head>
   <body>
     <div id="auth" class="auth" hidden>
@@ -65,6 +66,7 @@
             工作空间 <span>/</span> <strong>任务</strong>
           </div>
           <div class="topbar-right">
+            <button id="settings-open" class="icon-button" aria-label="模型与通知设置" title="模型与通知设置"><img src="/icons/settings.svg" alt="" /></button>
             <span id="connection" class="connection"><i></i>已连接</span
             ><span class="top-divider"></span><span id="clock">—</span>
           </div>
@@ -198,6 +200,35 @@
         </main>
       </div>
     </div>
+    <dialog id="settings-dialog" class="settings-dialog">
+      <div class="dialog-title">
+        <h2>模型与通知设置</h2>
+        <button type="button" id="settings-close" class="icon-button" aria-label="关闭设置" title="关闭设置"><img src="/icons/x.svg" alt="" /></button>
+      </div>
+      <div class="settings-tabs" role="tablist" aria-label="配置类别">
+        <button type="button" role="tab" aria-selected="true" data-settings-kind="ai">AI 模型</button>
+        <button type="button" role="tab" aria-selected="false" data-settings-kind="feishu">飞书机器人</button>
+        <button type="button" role="tab" aria-selected="false" data-settings-kind="notification">通知策略</button>
+      </div>
+      <p id="settings-overrides" class="settings-warning" hidden></p>
+      <p id="settings-mode" class="settings-warning" hidden></p>
+      <div class="settings-profile-bar">
+        <label for="settings-profile">配置</label><select id="settings-profile"></select>
+        <button type="button" id="settings-add" class="icon-button" aria-label="添加配置" title="添加配置"><img src="/icons/plus.svg" alt="" /></button>
+        <button type="button" id="settings-copy" class="icon-button" aria-label="复制已保存配置" title="复制已保存配置"><img src="/icons/copy.svg" alt="" /></button>
+        <button type="button" id="settings-reload" class="icon-button" aria-label="重新载入配置" title="重新载入配置"><img src="/icons/refresh-cw.svg" alt="" /></button>
+      </div>
+      <form id="settings-form">
+        <label id="settings-name-row" class="settings-field" hidden>配置名称<input id="settings-name" maxlength="100" autocomplete="off" /></label>
+        <fieldset id="settings-fields" class="settings-fields"></fieldset>
+        <p id="settings-result" role="status"></p>
+        <div class="settings-actions">
+          <button id="settings-test" type="button">测试连接</button>
+          <button id="settings-activate" type="button">设为当前配置</button>
+          <button id="settings-save" class="primary" type="submit"><img src="/icons/save.svg" alt="" />保存配置</button>
+        </div>
+      </form>
+    </dialog>
     <dialog id="ask-dialog" class="ask-dialog">
       <div class="dialog-title">
         <div>
