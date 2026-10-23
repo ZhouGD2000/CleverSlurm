@@ -12,6 +12,11 @@ import cslurm
 
 def build_wheel(directory):
     directory = Path(directory)
+    ancestor = directory.parent
+    while not ancestor.exists():
+        ancestor = ancestor.parent
+    if shutil.disk_usage(ancestor).free < 64 * 1024 * 1024:
+        raise RuntimeError('Insufficient free space for local packaging (at least 64 MiB required)')
     directory.mkdir(mode=0o700, parents=True, exist_ok=False)
     project = directory / 'source'
     project.mkdir()

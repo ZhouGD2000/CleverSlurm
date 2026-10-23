@@ -52,6 +52,10 @@ Choose a **new** directory beneath the remote home, defaulting to
 shows local packaging, then transfer and offline installation. The local cweb
 Python needs `pip`, `setuptools` and `wheel`; the remote Python needs version 3.10+
 and working `venv`/`ensurepip` support.
+Packaging checks for at least 64 MiB free locally; installation checks for at
+least 256 MiB at the destination and temporary-files location. These are minimum
+checks, not reserved space. The retained install log includes venv/ensurepip
+diagnostics as well as pip output.
 
 The installer:
 

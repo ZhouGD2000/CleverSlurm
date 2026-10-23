@@ -303,7 +303,7 @@ class RemoteManager:
             with self.lock:
                 self.states[identifier] = {'status': 'installing', 'phase': 'uploading_installing'}
             result = subprocess.run(ssh_command(profile, Path(remote_install.__file__).read_text()),
-                                    input=json.dumps(payload).encode() + b'\n', capture_output=True, timeout=240)
+                                    input=json.dumps(payload).encode() + b'\n', capture_output=True, timeout=300)
             try:
                 response = json.loads(result.stdout)
             except ValueError:

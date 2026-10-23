@@ -182,6 +182,21 @@ def test_installer_checks_hash_before_creating_destination(isolated_home):
     assert not target.exists()
 
 
+def test_installer_checks_disk_before_creating_files(isolated_home, monkeypatch):
+    import base64
+    import hashlib
+    from collections import namedtuple
+    from cslurm.web.remote_install import install
+    Usage = namedtuple('Usage', 'total used free')
+    monkeypatch.setattr('shutil.disk_usage', lambda path: Usage(100, 100, 0))
+    content = b'placeholder'
+    target = Path.home() / 'no-space'
+    with pytest.raises(RuntimeError, match='space'):
+        install({'destination': str(target), 'root': '~/.cslurm', 'filename': 'placeholder.whl',
+                 'sha256': hashlib.sha256(content).hexdigest(), 'wheel': base64.b64encode(content).decode()})
+    assert not target.exists()
+
+
 def test_workspace_ui_contains_local_choice_and_explicit_installer(server):
     page = request(server, '/', auth=False)[1].decode()
     assert 'id="workspace-select"' in page

@@ -5,9 +5,10 @@ import hashlib
 import json
 import os
 import re
+import shutil
 import subprocess
 import sys
-import venv
+import tempfile
 from pathlib import Path
 
 
@@ -31,15 +32,23 @@ def install(payload):
     content = base64.b64decode(payload['wheel'], validate=True)
     if len(content) > 16 * 1024 * 1024 or hashlib.sha256(content).hexdigest() != payload['sha256']:
         raise ValueError('Wheel checksum mismatch')
+    ancestor = target.parent
+    while not ancestor.exists():
+        ancestor = ancestor.parent
+    if min(shutil.disk_usage(ancestor).free, shutil.disk_usage(tempfile.gettempdir()).free) < 256 * 1024 * 1024:
+        raise RuntimeError('Insufficient free space for installation (at least 256 MiB required)')
     os.umask(0o077)
     target.mkdir(mode=0o700, parents=True, exist_ok=False)
     wheel = target / filename
     with wheel.open('xb') as stream:
         stream.write(content)
     environment = {k: v for k, v in os.environ.items() if k not in {'PYTHONPATH', 'PYTHONHOME', 'VIRTUAL_ENV'}}
-    venv.EnvBuilder(with_pip=True).create(target / 'venv')
     python = target / 'venv' / 'bin' / 'python'
     with (target / 'install.log').open('xb') as log:
+        result = subprocess.run([sys.executable, '-I', '-m', 'venv', '--symlinks', str(target / 'venv')],
+                                env=environment, stdout=log, stderr=log, timeout=120)
+        if result.returncode:
+            raise RuntimeError('venv/ensurepip failed; check install.log, Python prerequisites and free space. Files retained')
         result = subprocess.run([str(python), '-m', 'pip', 'install', '--no-index', '--no-deps',
                                  '--disable-pip-version-check', str(wheel)], env=environment,
                                 stdout=log, stderr=log, timeout=120)
