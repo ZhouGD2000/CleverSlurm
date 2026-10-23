@@ -369,6 +369,7 @@ For batch jobs, CleverSlurm records submission immediately. The instrumented scr
 
 ## Safety Notes
 
+- SQLite must be local to the management host, not opened over NFS by compute nodes. `csrun` within allocations spools records for `ctrack` instead. See [database safety and recovery](docs/database-safety.md), including the required offline migration for existing WAL databases.
 - `cscancel` passes through to Slurm `scancel`; there is no extra CleverSlurm batch-cancel helper, but broad real `scancel` options still do what Slurm normally does.
 - Tests use fake Slurm commands and do not cancel real Slurm jobs.
 - For real-cluster smoke tests, use a fresh `CSLURM_ROOT` so experiments do not modify an existing tracking database.

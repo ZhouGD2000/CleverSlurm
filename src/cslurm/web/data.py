@@ -6,6 +6,7 @@ from contextlib import contextmanager
 from pathlib import Path
 
 from cslurm.config import db_path
+from cslurm.storage import require_local_database, UnsafeDatabaseError
 from cslurm.notify.analysis import normalize_state
 from cslurm.slurm.tracker import TERMINAL_STATES
 
@@ -18,6 +19,7 @@ MAX_LOG_BYTES = 128 * 1024
 @contextmanager
 def reader():
     # GET requests never migrate the schema or change SQLite's journal mode.
+    require_local_database()
     conn = sqlite3.connect(db_path().resolve().as_uri() + "?mode=ro", uri=True, timeout=3)
     conn.row_factory = sqlite3.Row
     conn.create_function("normalized_state", 1, normalize_state, deterministic=True)
@@ -42,7 +44,7 @@ def check_integrity():
             result = conn.execute("pragma quick_check").fetchone()
         if result and result[0] == "ok":
             return None
-    except sqlite3.Error:
+    except (sqlite3.Error, UnsafeDatabaseError):
         pass
     return "Database integrity check failed or database is unavailable. Back up and repair it on the server before enabling operations."
 

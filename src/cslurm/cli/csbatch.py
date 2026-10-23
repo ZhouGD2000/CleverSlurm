@@ -11,7 +11,8 @@ from cslurm.collect.git import collect_git_metadata
 from cslurm.collect.static_auto import record_static_analysis_failure, record_static_analysis_queued
 from cslurm.ai.auto import record_auto_summary_failure, record_auto_summary_queued
 from cslurm.config import ai_auto_summary_enabled, root_dir, static_analysis_enabled
-from cslurm.db import run_write_transaction
+from cslurm.db import connect, run_write_transaction
+from cslurm.storage import require_local_database
 from cslurm.slurm.commands import run_slurm_command
 from cslurm.slurm.sbatch_options import (
     SBATCH_LONG_OPTIONS_WITH_ARG,
@@ -199,6 +200,10 @@ def launch_static_analysis(job_id: str) -> str:
 
 
 def submit_batch_result(argv: list[str]) -> BatchSubmission:
+    # Fail before submitting a real job if its bookkeeping cannot be safe here.
+    require_local_database()
+    with connect():
+        pass
     parsed = _parse_sbatch_invocation(argv)
     script = parsed.script_path
     script_text = script.read_text() if script is not None else _wrap_script_text(parsed.wrap_command or "")

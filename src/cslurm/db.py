@@ -6,6 +6,7 @@ from pathlib import Path
 from typing import TypeVar
 
 from cslurm.config import db_path, root_dir
+from cslurm.storage import require_local_database
 
 
 SCHEMA = """
@@ -138,6 +139,9 @@ CREATE TABLE IF NOT EXISTS notification_batches (
 CREATE UNIQUE INDEX IF NOT EXISTS notifications_dedupe_key_idx
 ON notifications(dedupe_key)
 WHERE dedupe_key IS NOT NULL;
+
+CREATE UNIQUE INDEX IF NOT EXISTS srun_spool_event_idx
+ON job_events(note) WHERE event_type = 'SRUN_FINISHED' AND note IS NOT NULL;
 """
 
 
@@ -205,12 +209,28 @@ def _is_locked_error(exc: sqlite3.OperationalError) -> bool:
     return any(marker in message for marker in LOCKED_ERROR_MARKERS)
 
 
+class Connection(sqlite3.Connection):
+    def __exit__(self, *args):
+        try:
+            return super().__exit__(*args)
+        finally:
+            self.close()
+
+
 def connect(path: Path | None = None) -> sqlite3.Connection:
+    require_local_database(path)
     root_dir().mkdir(parents=True, exist_ok=True)
-    conn = sqlite3.connect(path or db_path(), timeout=_busy_timeout_ms() / 1000)
-    conn.execute(f"pragma busy_timeout = {_busy_timeout_ms()}")
-    conn.execute("pragma journal_mode = wal")
-    conn.execute("pragma synchronous = normal")
+    conn = sqlite3.connect(path or db_path(), timeout=_busy_timeout_ms() / 1000, factory=Connection)
+    try:
+        conn.execute(f"pragma busy_timeout = {_busy_timeout_ms()}")
+        # Avoid both cross-host WAL and the WAL-reset race in older SQLite builds.
+        if conn.execute("pragma journal_mode").fetchone()[0].lower() == "wal":
+            raise RuntimeError("Legacy WAL database: stop all clients, back it up and check integrity, "
+                               "then run PRAGMA journal_mode=DELETE on its local management host.")
+        conn.execute("pragma synchronous = full")
+    except BaseException:
+        conn.close()
+        raise
     conn.row_factory = sqlite3.Row
     return conn
 

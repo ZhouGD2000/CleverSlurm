@@ -3,13 +3,13 @@ import sqlite3
 from cslurm.db import connect, run_write_transaction
 
 
-def test_connect_configures_busy_timeout_and_wal(isolated_home):
+def test_connect_configures_busy_timeout_and_rollback_journal(isolated_home):
     with connect() as conn:
         busy_timeout = conn.execute("pragma busy_timeout").fetchone()[0]
         journal_mode = conn.execute("pragma journal_mode").fetchone()[0]
 
     assert busy_timeout >= 30000
-    assert journal_mode.lower() == "wal"
+    assert journal_mode.lower() == "delete"
 
 
 def test_connect_allows_busy_timeout_override(isolated_home, monkeypatch):

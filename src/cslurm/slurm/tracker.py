@@ -5,6 +5,7 @@ from cslurm.db import connect, init_db
 from cslurm.notify.dispatcher import process_job_completion_standalone
 from cslurm.notify.feishu import dispatch_pending
 from cslurm.runtime.ingest import ingest_runtime_commands, ingest_runtime_finish
+from cslurm.runtime.spool import ingest as ingest_srun_spool
 from cslurm.slurm.commands import run_slurm_command
 
 
@@ -66,10 +67,29 @@ def _dispatch_due_notifications() -> None:
         dispatch_pending(mode="all")
 
 
+def accounting_row(rows: dict[str, dict[str, str]], job_id: str) -> dict[str, str] | None:
+    """sacct reports array elements, but submission records contain the parent ID."""
+    if job_id in rows:
+        return rows[job_id]
+    children = [row for key, row in rows.items() if key.startswith(job_id + "_")]
+    if not children:
+        return None
+    states = {_normalize_state(row.get("State")) for row in children}
+    active = states - TERMINAL_STATES
+    if active:
+        state = next((s for s in ("RUNNING", "COMPLETING", "CONFIGURING", "PENDING") if s in active), sorted(active)[0])
+    else:
+        state = next((s for s in ("FAILED", "OUT_OF_MEMORY", "TIMEOUT", "NODE_FAIL", "BOOT_FAIL", "DEADLINE", "REVOKED", "SPECIAL_EXIT", "CANCELLED") if s in states), "COMPLETED")
+    codes = {r.get("ExitCode", "") for r in children}
+    return {"JobID": job_id, "State": state, "ExitCode": next(iter(codes)) if len(codes) == 1 else "",
+            "DerivedExitCode": "", "Elapsed": "", "MaxRSS": "", "NodeList": ""}
+
+
 def track_once() -> None:
     completed_jobs: list[tuple[str, int]] = []
     with connect() as conn:
         init_db(conn)
+        ingest_srun_spool(conn)
         jobs = conn.execute(
             """
             select job_id, state
@@ -103,7 +123,7 @@ def track_once() -> None:
         for job in jobs:
             ingest_runtime_commands(conn, job["job_id"])
             ingest_runtime_finish(conn, job["job_id"])
-            row = rows.get(job["job_id"])
+            row = accounting_row(rows, job["job_id"])
             if not row:
                 continue
             old_state = job["state"]

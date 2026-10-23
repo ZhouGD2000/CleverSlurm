@@ -4,6 +4,8 @@ from datetime import datetime, timezone
 
 from cslurm.config import command_path
 from cslurm.db import run_write_transaction
+from cslurm.runtime.spool import publish
+from cslurm.storage import require_local_database, UnsafeDatabaseError
 
 
 def _now() -> str:
@@ -18,7 +20,15 @@ def run_job(argv: list[str], *, capture_output: bool = True) -> subprocess.Compl
     if not argv:
         raise SystemExit("usage: csrun [srun-args...] command [args...]")
 
-    job_id = os.environ.get("SLURM_JOB_ID") or _local_job_id()
+    allocation = os.environ.get("SLURM_JOB_ID")
+    job_id = allocation or _local_job_id()
+    if os.environ.get("SLURM_ARRAY_JOB_ID") and os.environ.get("SLURM_ARRAY_TASK_ID"):
+        job_id = os.environ["SLURM_ARRAY_JOB_ID"] + "_" + os.environ["SLURM_ARRAY_TASK_ID"]
+    spool = bool(allocation)
+    try:
+        require_local_database()
+    except UnsafeDatabaseError:
+        spool = True
     timestamp = _now()
     cwd = os.getcwd()
     cslurm_command = "csrun " + " ".join(argv)
@@ -34,6 +44,13 @@ def run_job(argv: list[str], *, capture_output: bool = True) -> subprocess.Compl
     else:
         result = subprocess.run([command_path("srun"), *argv], check=False, text=True)
     state = "COMPLETED" if result.returncode == 0 else "FAILED"
+
+    if spool:
+        publish({"job_id": job_id, "time": timestamp, "cwd": cwd,
+                 "command": srun_command, "state": state,
+                 "exit_code": f"{result.returncode}:0", "allocation": bool(allocation),
+                 "stdout": result.stdout or "", "stderr": result.stderr or ""})
+        return result
 
     def record(conn):
         conn.execute(
