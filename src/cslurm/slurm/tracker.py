@@ -2,7 +2,6 @@ from datetime import datetime, timezone
 
 from cslurm.config import notification_auto_dispatch_enabled
 from cslurm.db import connect, init_db
-from cslurm.notify.dispatcher import process_job_completion_standalone
 from cslurm.notify.feishu import dispatch_pending
 from cslurm.runtime.ingest import ingest_runtime_commands, ingest_runtime_finish
 from cslurm.runtime.spool import ingest as ingest_srun_spool
@@ -85,94 +84,57 @@ def accounting_row(rows: dict[str, dict[str, str]], job_id: str) -> dict[str, st
             "DerivedExitCode": "", "Elapsed": "", "MaxRSS": "", "NodeList": ""}
 
 
-def track_once() -> None:
-    completed_jobs: list[tuple[str, int]] = []
+def _track_once():
+    from cslurm.work import enqueue, wake
     with connect() as conn:
         init_db(conn)
         ingest_srun_spool(conn)
         jobs = conn.execute(
-            """
-            select job_id, state
-            from jobs
-            where state is null or state not in (
-              'COMPLETED', 'FAILED', 'CANCELLED', 'TIMEOUT', 'OUT_OF_MEMORY',
-              'NODE_FAIL', 'BOOT_FAIL', 'DEADLINE', 'REVOKED', 'SPECIAL_EXIT'
-            )
-            """
-        ).fetchall()
-        if not jobs:
-            _dispatch_due_notifications()
-            return
-
-        job_ids = [job["job_id"] for job in jobs]
-        result = run_slurm_command(
-            "sacct",
-            [
-                "-P",
-                "-n",
-                "-j",
-                ",".join(job_ids),
-                "--format=JobID,State,ExitCode,DerivedExitCode,Elapsed,MaxRSS,NodeList",
-            ],
-        )
+            "select job_id,state from jobs where state is null or state not in (" +
+            ",".join("?" for _ in TERMINAL_STATES) + ")", tuple(TERMINAL_STATES)).fetchall()
+    rows = {}
+    # Accounting calls never run while holding a database write transaction.
+    for offset in range(0, len(jobs), 200):
+        batch = jobs[offset:offset + 200]
+        result = run_slurm_command("sacct", ["-P", "-n", "-j", ",".join(j["job_id"] for j in batch),
+            "--format=JobID,State,ExitCode,DerivedExitCode,Elapsed,MaxRSS,NodeList"])
         if result.returncode != 0:
-            raise RuntimeError(result.stderr or result.stdout)
-
-        rows = _parse_sacct_table(result.stdout)
-        timestamp = _now()
+            raise RuntimeError("Slurm accounting request failed")
+        rows.update(_parse_sacct_table(result.stdout))
+    timestamp = _now()
+    with connect() as conn:
+        init_db(conn)
         for job in jobs:
             ingest_runtime_commands(conn, job["job_id"])
             ingest_runtime_finish(conn, job["job_id"])
             row = accounting_row(rows, job["job_id"])
             if not row:
                 continue
-            old_state = job["state"]
-            new_state = row.get("State")
+            new_state = _normalize_state(row.get("State"))
+            current = conn.execute("select state from jobs where job_id=?", (job["job_id"],)).fetchone()
+            old_state = current["state"]
             conn.execute(
-                """
-                update jobs
-                set state = ?, exit_code = ?, derived_exit_code = ?, elapsed = ?, max_rss = ?, nodelist = ?, updated_at = ?
-                where job_id = ?
-                """,
-                (
-                    new_state,
-                    row.get("ExitCode"),
-                    row.get("DerivedExitCode"),
-                    row.get("Elapsed"),
-                    row.get("MaxRSS"),
-                    row.get("NodeList"),
-                    timestamp,
-                    job["job_id"],
-                ),
-            )
+                "update jobs set state=?,exit_code=?,derived_exit_code=?,elapsed=?,max_rss=?,nodelist=?,updated_at=? where job_id=?",
+                (new_state, row.get("ExitCode"), row.get("DerivedExitCode"), row.get("Elapsed"),
+                 row.get("MaxRSS"), row.get("NodeList"), timestamp, job["job_id"]))
             if old_state != new_state:
-                cursor = conn.execute(
-                    """
-                    insert into job_events (job_id, event_time, event_type, raw_output)
-                    values (?, ?, ?, ?)
-                    """,
-                    (job["job_id"], timestamp, "STATE_CHANGED", f"{old_state} -> {new_state}"),
-                )
-                if _normalize_state(new_state) in TERMINAL_STATES:
-                    completed_jobs.append((job["job_id"], int(cursor.lastrowid)))
+                event_id = conn.execute(
+                    "insert into job_events(job_id,event_time,event_type,raw_output) values (?,?,'STATE_CHANGED',?)",
+                    (job["job_id"], timestamp, f"{old_state} -> {new_state}")).lastrowid
+                if new_state in TERMINAL_STATES:
+                    enqueue(conn, "completion", job["job_id"], event_id)
         conn.commit()
-    for job_id, event_id in completed_jobs:
-        try:
-            process_job_completion_standalone(job_id, event_id=event_id)
-        except Exception as exc:
-            with connect() as conn:
-                init_db(conn)
-                conn.execute(
-                    """
-                    insert into job_events (job_id, event_time, event_type, raw_output)
-                    values (?, ?, ?, ?)
-                    """,
-                    (
-                        job_id,
-                        _now(),
-                        "NOTIFICATION_ANALYSIS_FAILED",
-                        f"{type(exc).__name__}: {exc}",
-                    ),
-                )
-                conn.commit()
+    # New transitions alone enqueue completion work. Never scan historical terminal jobs.
+    wake()
     _dispatch_due_notifications()
+
+
+def track_once() -> None:
+    from cslurm.work import record_health
+    record_health("tracker", "started_at")
+    try:
+        _track_once()
+    except Exception as exc:
+        record_health("tracker", "failed_at", type(exc).__name__)
+        raise
+    record_health("tracker", "succeeded_at")

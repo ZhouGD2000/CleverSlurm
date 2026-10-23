@@ -10,6 +10,30 @@ from cslurm.storage import require_local_database
 
 
 SCHEMA = """
+CREATE TABLE IF NOT EXISTS work_items (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  dedupe_key TEXT UNIQUE NOT NULL,
+  kind TEXT NOT NULL,
+  job_id TEXT NOT NULL,
+  event_id INTEGER,
+  status TEXT NOT NULL DEFAULT 'pending',
+  attempts INTEGER NOT NULL DEFAULT 0,
+  available_at REAL NOT NULL DEFAULT 0,
+  created_at TEXT NOT NULL,
+  updated_at TEXT NOT NULL,
+  last_error TEXT
+);
+CREATE TABLE IF NOT EXISTS service_health (
+  name TEXT PRIMARY KEY, started_at TEXT, succeeded_at TEXT, failed_at TEXT, error TEXT
+);
+CREATE TABLE IF NOT EXISTS notification_exclusions (
+  job_id TEXT PRIMARY KEY, reason TEXT NOT NULL, created_at TEXT NOT NULL
+);
+CREATE TABLE IF NOT EXISTS model_calls (
+  id INTEGER PRIMARY KEY AUTOINCREMENT, created_at TEXT, format TEXT,
+  requested_model TEXT, response_model TEXT, elapsed_ms INTEGER,
+  status TEXT, error_code TEXT, fallback INTEGER
+);
 CREATE TABLE IF NOT EXISTS jobs (
   job_id TEXT PRIMARY KEY,
   submitted_at TEXT,
@@ -142,6 +166,14 @@ WHERE dedupe_key IS NOT NULL;
 
 CREATE UNIQUE INDEX IF NOT EXISTS srun_spool_event_idx
 ON job_events(note) WHERE event_type = 'SRUN_FINISHED' AND note IS NOT NULL;
+CREATE INDEX IF NOT EXISTS work_ready_idx ON work_items(status, available_at, id);
+CREATE INDEX IF NOT EXISTS work_job_idx ON work_items(job_id, id);
+CREATE INDEX IF NOT EXISTS events_job_idx ON job_events(job_id, id);
+CREATE INDEX IF NOT EXISTS commands_job_idx ON job_commands(job_id, id);
+CREATE INDEX IF NOT EXISTS files_job_idx ON job_files(job_id, id);
+CREATE INDEX IF NOT EXISTS analysis_job_idx ON job_analysis(job_id, id);
+CREATE INDEX IF NOT EXISTS notifications_job_idx ON notifications(job_id, id);
+CREATE INDEX IF NOT EXISTS notifications_ready_idx ON notifications(status, channel, mode, id);
 """
 
 
@@ -260,6 +292,8 @@ def run_write_transaction(
 def init_db(conn: sqlite3.Connection) -> None:
     conn.executescript(SCHEMA)
     _ensure_columns(conn, "jobs", JOB_COLUMNS)
+    conn.execute("create index if not exists jobs_submitted_idx on jobs(submitted_at desc, job_id desc)")
+    conn.execute("create index if not exists jobs_state_idx on jobs(state)")
     conn.commit()
 
 

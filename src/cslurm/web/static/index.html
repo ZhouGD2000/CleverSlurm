@@ -9,6 +9,7 @@
     <link rel="stylesheet" href="/style.css" />
     <script src="/app.js" defer></script>
     <script src="/settings.js" defer></script>
+    <script src="/health.js" defer></script>
   </head>
   <body>
     <div id="auth" class="auth" hidden>
@@ -66,6 +67,7 @@
             工作空间 <span>/</span> <strong>任务</strong>
           </div>
           <div class="topbar-right">
+            <button id="health-open" class="icon-button" aria-label="系统健康与后台任务" title="系统健康与后台任务"><img src="/icons/activity.svg" alt="" /></button>
             <button id="settings-open" class="icon-button" aria-label="模型与通知设置" title="模型与通知设置"><img src="/icons/settings.svg" alt="" /></button>
             <span id="connection" class="connection"><i></i>已连接</span
             ><span class="top-divider"></span><span id="clock">—</span>
@@ -139,6 +141,14 @@
                   <img src="/icons/refresh-cw.svg" alt="" />
                 </button>
               </form>
+              <div class="advanced-filters">
+                <label>开始日期（UTC）<input type="date" id="since" /></label>
+                <label>结束日期（UTC）<input type="date" id="until" /></label>
+                <label>工作目录<input type="search" id="cwd-filter" /></label>
+                <label>标签<input type="search" id="tag-filter" /></label>
+                <button type="button" id="compare-open" class="icon-button" aria-label="对比所选任务" title="对比所选任务" disabled><img src="/icons/layers.svg" alt="" /></button>
+                <span id="compare-count">0 / 6</span>
+              </div>
               <div class="table-scroll">
                 <table class="jobs-table">
                   <thead>
@@ -200,6 +210,15 @@
         </main>
       </div>
     </div>
+    <dialog id="health-dialog" class="settings-dialog">
+      <div class="dialog-title"><h2>系统健康与后台任务</h2><button id="health-close" class="icon-button" aria-label="关闭健康面板" title="关闭健康面板"><img src="/icons/x.svg" alt="" /></button></div>
+      <div class="health-toolbar"><button id="health-reload" class="icon-button" aria-label="刷新健康状态" title="刷新健康状态"><img src="/icons/refresh-cw.svg" alt="" /></button><button id="health-backup" class="icon-button" aria-label="创建数据库备份" title="创建数据库备份"><img src="/icons/save.svg" alt="" /></button><span id="health-result" role="status"></span></div>
+      <div id="health-content"></div>
+    </dialog>
+    <dialog id="compare-dialog" class="settings-dialog">
+      <div class="dialog-title"><h2>任务对比</h2><button id="compare-close" class="icon-button" aria-label="关闭任务对比" title="关闭任务对比"><img src="/icons/x.svg" alt="" /></button></div>
+      <div id="compare-content" class="table-scroll"></div>
+    </dialog>
     <dialog id="settings-dialog" class="settings-dialog">
       <div class="dialog-title">
         <h2>模型与通知设置</h2>

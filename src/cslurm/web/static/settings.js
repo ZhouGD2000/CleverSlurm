@@ -214,7 +214,7 @@ async function fetchSettingsModels() {
   $("settings-model-status").textContent = "正在获取模型列表…";
   settingsButtons();
   try {
-    const result = await api("/api/settings/models", body);
+    const result = await settingsProbe("/api/settings/models", body);
     settingsState.models = result.models;
     renderModelChoices();
     $("settings-model-status").textContent = result.models.length
@@ -224,6 +224,18 @@ async function fetchSettingsModels() {
   } finally {
     settingsState.busy = false;
     settingsButtons();
+  }
+}
+async function settingsProbe(path, body) {
+  const started = await api(path, {...body, background: true});
+  for (;;) {
+    await new Promise((resolve) => setTimeout(resolve, 700));
+    const operation = await api(`/api/operations/${started.id}`);
+    if (operation.status === "running") continue;
+    if (operation.status !== "succeeded") throw new Error(operation.error || "诊断超时或中断");
+    const result = JSON.parse(operation.result);
+    if (result.error) throw new Error(result.error);
+    return result;
   }
 }
 async function settingsAction(action) {
@@ -240,7 +252,7 @@ async function settingsAction(action) {
   settingsButtons();
   $("settings-result").textContent = action === "test" ? "正在测试已保存的配置…" : "正在保存…";
   try {
-    const result = await api(action === "test" ? "/api/settings/test" : "/api/settings", body);
+    const result = action === "test" ? await settingsProbe("/api/settings/test", body) : await api("/api/settings", body);
     if (action !== "test") {
       settingsState.data = result;
       settingsState.id = action === "activate" ? "current" : result.saved_id;

@@ -355,7 +355,25 @@ cnotify dispatch --mode digest --force
 cnotify dispatch --mode all
 ```
 
-`ctrack` normally dispatches immediate notifications automatically after it records a terminal state. It also flushes due batch/digest summaries according to `batch_window_minutes`; `--force` is only needed when you want to send a summary before the window expires.
+`ctrack` records terminal-state changes and queues completion analysis without waiting for AI. A bounded background worker analyzes them; a following tracker run dispatches ready notifications and due batch/digest summaries. With minute-based cron, delivery normally follows analysis by up to another tracking interval. `--force` only bypasses the batch/digest time window.
+
+## Health and Background Work
+
+```bash
+cdoctor health
+cwork list
+cwork retry 123                 # one failed work item, not a Slurm job ID
+cdoctor backup                 # new private, verified database backup
+cdoctor verify /path/to/backup.sqlite
+cdoctor restore /path/to/backup.sqlite /path/to/new-recovery-directory
+```
+
+The web console includes health, failed-work retry, database backup, combined
+date/directory/tag filters and comparison of 2 to 6 jobs. Submission analysis and
+summaries use a durable queue with bounded concurrency (default 2). Enable
+`ctrack auto on` so retries and queued work are revisited automatically. Restore
+always uses a new directory and never replaces the live database. See
+[operations and recovery](docs/operations.md) for notification safety and recovery.
 
 ## Support Boundaries
 

@@ -77,6 +77,32 @@ def test_queries_are_paginated_filtered_and_read_only(web_db):
     assert (web_db / "db.sqlite").stat().st_mtime_ns == before
 
 
+def test_date_directory_tag_filters_and_comparison(server):
+    with connect() as conn:
+        conn.execute("update jobs set effective_chdir='/project/sweep',tags='science' where job_id='101'")
+    result = request(server, '/api/jobs?since=2026-01-02&until=2026-01-02&cwd=sweep&tag=science&state=COMPLETED&partition=gpu')
+    assert result[1]['total'] == 1
+    assert request(server, '/api/jobs?since=invalid')[0] == 400
+    assert request(server, '/api/compare?ids=100,101')[1]['jobs'][1]['job_id'] == '101'
+    assert request(server, '/api/compare?ids=100,100')[0] == 400
+    assert request(server, '/api/compare?ids=100,101', auth=False)[0] == 403
+
+
+def test_health_and_background_probe(server, monkeypatch):
+    from cslurm.web import settings
+    monkeypatch.setattr('cslurm.auto_track._read_crontab', lambda: '')
+    assert request(server, '/api/health', auth=False)[0] == 403
+    assert request(server, '/api/health')[1]['database_error'] is None
+    body = {'background': True, 'kind':'ai', 'id':'current', 'revision':settings.snapshot()['revision']}
+    code, op = request(server, '/api/settings/test', body=body)
+    assert code == 202
+    result = wait_operation(server.operations, op)
+    assert json.loads(result['result'])['code'] == 'configuration'
+    server.operations.read_only = True
+    assert request(server, '/api/settings/test', body=body)[0] == 403
+    assert request(server, '/api/operations', body={'action':'backup'})[0] == 403
+
+
 def test_server_assets_auth_validation_and_unknown_routes(server):
     assert request(server, "/", auth=False)[0] == 200
     assert request(server, "/icons/cpu.svg", auth=False)[0] == 200

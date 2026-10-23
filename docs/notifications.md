@@ -1,5 +1,20 @@
 # Notifications
 
+## Durable processing and uncertain delivery
+
+Completion analysis now runs through the persisted bounded worker queue. The
+tracker commits new terminal transitions and queue entries atomically, then
+returns without waiting for AI. A subsequent tracker invocation delivers ready
+notifications. Historical terminal jobs are not automatically backfilled.
+
+The dispatcher atomically claims messages before sending and never holds a
+database transaction during HTTP calls. Concurrent dispatchers cannot claim the
+same message. Delivery errors or interrupted sends are marked `uncertain` and
+are not automatically retried, because the webhook may already have accepted
+the message. Existing pending messages can be explicitly suppressed without
+deleting history using `cdoctor freeze-history`. See
+[operations and recovery](operations.md) for exact behavior and precautions.
+
 CleverSlurm records every terminal job transition before deciding whether to push a message. The current implementation follows the reference guide's first working slice:
 
 - deterministic Slurm state and exit-code classification

@@ -74,6 +74,8 @@ def test_real_slurm_csbatch_smoke_job_completes(monkeypatch):
     try:
         job_id = submit_batch(_submission_args())
     except RuntimeError as exc:
+        if os.environ.get('CSLURM_REQUIRE_REAL_SLURM') == 'true':
+            pytest.fail(f'Required real Slurm submission failed: {exc}')
         pytest.skip(f"real Slurm submission failed: {exc}")
 
     deadline = time.monotonic() + int(os.environ.get("CSLURM_REAL_SLURM_TIMEOUT_SECONDS", "180"))
@@ -85,6 +87,8 @@ def test_real_slurm_csbatch_smoke_job_completes(monkeypatch):
             break
         time.sleep(5)
     else:
+        if os.environ.get('CSLURM_REQUIRE_REAL_SLURM') == 'true':
+            pytest.fail(f'Required real Slurm job did not finish: {job_id}, {state}')
         pytest.skip(f"real Slurm smoke job {job_id} did not finish before timeout; state={state}")
 
     assert state == "COMPLETED"

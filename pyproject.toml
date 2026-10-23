@@ -18,6 +18,8 @@ csummarize = "cslurm.cli.csummarize:main"
 cnotify = "cslurm.cli.cnotify:main"
 cshim = "cslurm.cli.cshim:main"
 cweb = "cslurm.cli.cweb:main"
+cwork = "cslurm.cli.cwork:main"
+cdoctor = "cslurm.cli.cdoctor:main"
 
 [tool.setuptools.package-data]
 "cslurm.web" = ["static/*", "static/icons/*"]

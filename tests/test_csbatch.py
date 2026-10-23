@@ -359,6 +359,7 @@ def test_csbatch_records_summary_queue_failure_without_breaking_submission(isola
 
 
 def test_launch_auto_summary_starts_detached_worker(isolated_home, monkeypatch):
+    monkeypatch.setenv("CSLURM_WORKER_AUTOSTART", "true")
     from cslurm.cli.csbatch import launch_auto_summary
 
     launched = []
@@ -379,7 +380,7 @@ def test_launch_auto_summary_starts_detached_worker(isolated_home, monkeypatch):
             "select event_type, raw_output from job_events where job_id = '123456'"
         ).fetchone()
 
-    assert launched[0][0][-3:] == ["-m", "cslurm.ai.auto", "123456"]
+    assert launched[0][0][-3:-1] == ["-m", "cslurm.work"]
     assert launched[0][1]["start_new_session"] is True
     assert event == ("AI_SUMMARY_QUEUED", "pid=888")
 
@@ -414,6 +415,7 @@ def test_csbatch_queues_static_analysis_after_recording_job(isolated_home, fake_
 
 
 def test_launch_static_analysis_starts_detached_worker(isolated_home, monkeypatch):
+    monkeypatch.setenv("CSLURM_WORKER_AUTOSTART", "true")
     from cslurm.cli.csbatch import launch_static_analysis
 
     launched = []
@@ -434,7 +436,7 @@ def test_launch_static_analysis_starts_detached_worker(isolated_home, monkeypatc
             "select event_type, raw_output from job_events where job_id = '123456'"
         ).fetchone()
 
-    assert launched[0][0][-3:] == ["-m", "cslurm.collect.static_auto", "123456"]
+    assert launched[0][0][-3:-1] == ["-m", "cslurm.work"]
     assert launched[0][1]["start_new_session"] is True
     assert event == ("STATIC_ANALYSIS_QUEUED", "pid=889")
 

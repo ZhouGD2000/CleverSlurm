@@ -98,6 +98,8 @@ def test_tracker_runs_ai_analysis_after_state_transaction_commits(isolated_home,
     monkeypatch.setattr("cslurm.notify.dispatcher.request_ai_semantic_analysis", fake_ai_analysis)
 
     track_once()
+    from cslurm.work import drain
+    drain()
 
     with connect() as conn:
         event = conn.execute(

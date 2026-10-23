@@ -25,6 +25,7 @@ def isolated_home(tmp_path, monkeypatch):
     root.mkdir()
     monkeypatch.setenv("HOME", str(home))
     monkeypatch.setenv("CSLURM_ROOT", str(root))
+    monkeypatch.setenv("CSLURM_WORKER_AUTOSTART", "false")
     return root
 
 
@@ -56,6 +57,8 @@ def pytest_collection_modifyitems(config, items):
     probe = probe_real_slurm()
     if probe.available:
         return
+    if os.environ.get('CSLURM_REQUIRE_REAL_SLURM') == 'true':
+        raise pytest.UsageError('Required real Slurm unavailable: ' + probe.reason)
     marker = pytest.mark.skip(reason=f"real Slurm unavailable: {probe.reason}")
     for item in real_items:
         item.add_marker(marker)

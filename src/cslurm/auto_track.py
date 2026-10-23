@@ -137,7 +137,7 @@ def build_cron_line(
 
 
 def _read_crontab() -> str:
-    result = subprocess.run(["crontab", "-l"], check=False, text=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+    result = subprocess.run(["crontab", "-l"], check=False, text=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE, timeout=5)
     if result.returncode != 0:
         return ""
     return result.stdout

@@ -2,6 +2,7 @@ import json
 import os
 import sqlite3
 import stat
+from datetime import date, timedelta
 from contextlib import contextmanager
 from pathlib import Path
 
@@ -73,8 +74,20 @@ def get_job(job_id):
     return job_record(row)
 
 
-def list_jobs(*, search="", state="", partition="", limit=25, offset=0):
+def list_jobs(*, search="", state="", partition="", limit=25, offset=0, since='', until='', cwd='', tag=''):
     conditions, values = [], []
+    if since:
+        conditions.append('submitted_at >= ?')
+        values.append(date.fromisoformat(since).isoformat())
+    if until:
+        conditions.append('submitted_at < ?')
+        values.append((date.fromisoformat(until) + timedelta(days=1)).isoformat())
+    if since and until and since > until:
+        raise ValueError('Invalid date range')
+    for column, text in [("coalesce(effective_chdir,submit_cwd,'')", cwd), ("coalesce(tags,'')", tag)]:
+        if text:
+            conditions.append(f'instr({column}, ?) > 0')
+            values.append(text)
     if search:
         conditions.append("(instr(lower(job_id), ?) > 0 or instr(lower(coalesce(job_name, '')), ?) > 0 or instr(lower(coalesce(command, '')), ?) > 0)")
         values.extend([search.lower()] * 3)
@@ -98,6 +111,12 @@ def list_jobs(*, search="", state="", partition="", limit=25, offset=0):
             + " order by submitted_at desc, job_id desc limit ? offset ?", (*values, limit, offset),
         ).fetchall()
     return {"items": [job_record(row) for row in rows], "total": total, "limit": limit, "offset": offset}
+
+
+def compare(ids):
+    if not 2 <= len(ids) <= 6 or len(set(ids)) != len(ids) or any(len(i) > 100 for i in ids):
+        raise ValueError('Choose two to six distinct jobs')
+    return {'jobs': [get_job(job_id) for job_id in ids]}
 
 
 def overview():

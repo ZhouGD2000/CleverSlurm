@@ -1,5 +1,26 @@
 # Testing
 
+## GitHub Actions
+
+`.github/workflows/ci.yml` runs fake/unit tests on Python 3.10, 3.12 and 3.13.
+A separate disposable Ubuntu runner installs Munge, MariaDB, `slurmdbd`,
+`slurmctld` and `slurmd`. `ci/setup_slurm.py` configures a single-node `debug`
+partition with real accounting, then runs the `real_slurm` marker.
+`CSLURM_REQUIRE_REAL_SLURM=true` makes missing daemons, rejected submissions or
+completion timeouts fail CI instead of silently skipping the integration tests.
+
+The setup script is restricted to root on GitHub Actions. Never run it on an
+existing cluster: it is for a disposable runner, not production installation.
+No API keys or Feishu credentials are required. Real tests submit their own
+short-lived job into an isolated data root and never cancel existing jobs.
+Ordinary local runs keep automatic environment detection and skip real tests
+when a usable scheduler is absent; fake coverage runs regardless.
+
+Reliability regressions also cover notification claim races and interrupted
+sends, network calls outside SQLite transactions, durable work recovery,
+historical notification exclusion, protected model fields, metadata redaction,
+non-overwriting backups, combined filters and authenticated health endpoints.
+
 The test suite is split automatically:
 
 - Fake Slurm tests always run. They create fake `sbatch`, `srun`, `sacct`, and `scancel` executables in temporary directories and put those directories first in `PATH`.

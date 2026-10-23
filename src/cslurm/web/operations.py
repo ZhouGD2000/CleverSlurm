@@ -1,4 +1,5 @@
 import os
+import json
 import re
 import signal
 import subprocess
@@ -41,14 +42,25 @@ class Operations:
             raise PermissionError("Read-only mode: operations are disabled")
         if self.demo:
             raise PermissionError("Demo data: live operations are disabled")
-        if action not in {"refresh", "summarize", "ask", "cancel"}:
+        if action not in {"refresh", "summarize", "ask", "cancel", "model_test", "models", "work_retry", "backup"}:
             raise ValueError("Unknown operation")
         job_id = body.get("job_id")
         if action in {"summarize", "cancel"}:
             if not isinstance(job_id, str) or not re.fullmatch(r"[A-Za-z0-9_.-]{1,100}", job_id) or job_id.startswith("-"):
                 raise ValueError("Invalid job ID")
             job = get_job(job_id)
-        if action == "cancel":
+        stdin_body = None
+        if action in {"model_test", "models"}:
+            args = ['cslurm.web.probe', action]
+            stdin_body = json.dumps(body).encode()
+        elif action == 'work_retry':
+            item_id = body.get('id')
+            if not isinstance(item_id, int) or item_id < 1:
+                raise ValueError('Invalid work ID')
+            args = ['cslurm.cli.cwork', 'retry', str(item_id)]
+        elif action == 'backup':
+            args = ['cslurm.cli.cdoctor', 'backup']
+        elif action == "cancel":
             if not self.allow_cancel:
                 raise PermissionError("Cancellation is disabled; start cweb with --allow-cancel to enable it")
             if not re.fullmatch(r"[0-9]+(?:_[0-9]+)?", job_id) or (job.get("array_spec") and "_" not in job_id):
@@ -83,7 +95,7 @@ class Operations:
                 "started_at": datetime.now(timezone.utc).isoformat(), "result": None, "error": None,
             }
             self.active = operation_id
-            self.worker = threading.Thread(target=self._run, args=(operation_id, args), daemon=True)
+            self.worker = threading.Thread(target=self._run, args=(operation_id, args, stdin_body), daemon=True)
             self.worker.start()
             return dict(self.items[operation_id])
 
@@ -111,7 +123,7 @@ class Operations:
         if worker:
             worker.join(timeout=8)
 
-    def _run(self, operation_id, args):
+    def _run(self, operation_id, args, stdin_body=None):
         lock_file = None
         result, error = None, None
         try:
@@ -122,20 +134,23 @@ class Operations:
                     fcntl.flock(lock_file, fcntl.LOCK_EX | fcntl.LOCK_NB)
                 except BlockingIOError:
                     raise BusyError("Automatic tracking is already running; try again later") from None
-            with tempfile.TemporaryFile() as output:
+            with tempfile.TemporaryFile() as output, tempfile.TemporaryFile() as input_file:
+                if stdin_body is not None:
+                    input_file.write(stdin_body)
+                    input_file.seek(0)
                 with self.lock:
                     if self.stopping:
                         raise BusyError("The web server is stopping")
                     process = subprocess.Popen(
                         [sys.executable, "-m", *args], stdout=output, stderr=output,
-                        stdin=subprocess.DEVNULL, start_new_session=True,
+                        stdin=input_file if stdin_body is not None else subprocess.DEVNULL, start_new_session=True,
                     )
                     self.process = process
                 try:
-                    code = process.wait(timeout=300)
+                    code = process.wait(timeout=60 if args[0] == 'cslurm.web.probe' else 300)
                 except subprocess.TimeoutExpired:
                     self._terminate(process)
-                    raise TimeoutError("Operation exceeded 300 seconds; check job events before retrying") from None
+                    raise TimeoutError("Operation exceeded its deadline; check status before retrying") from None
                 if code:
                     # Provider errors may contain credentials or webhook URLs. Never expose tracebacks.
                     raise RuntimeError(f"Command exited with status {code}. Inspect the job events on the server.")

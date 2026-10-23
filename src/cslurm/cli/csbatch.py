@@ -153,49 +153,29 @@ def _wrap_script_text(command: str) -> str:
     return "#!/bin/bash\n" + command + "\n"
 
 
+def _queue_submission_work(kind, job_id):
+    from cslurm.work import submit, wake
+    submit(kind, job_id)
+    try:
+        return wake()
+    except OSError:
+        # Durable work remains queued; the next tracker/worker pass can recover it.
+        return None
+
+
 def launch_auto_summary(job_id: str) -> str:
     if not ai_auto_summary_enabled():
         return "disabled"
-    job_dir = root_dir() / "jobs" / job_id
-    job_dir.mkdir(parents=True, exist_ok=True)
-    log_path = job_dir / "auto_summary.log"
-    try:
-        with log_path.open("ab") as log:
-            process = subprocess.Popen(
-                [sys.executable, "-m", "cslurm.ai.auto", job_id],
-                stdout=log,
-                stderr=subprocess.STDOUT,
-                stdin=subprocess.DEVNULL,
-                close_fds=True,
-                start_new_session=True,
-            )
-    except Exception as exc:
-        record_auto_summary_failure(job_id, exc)
-        return "failed"
-    record_auto_summary_queued(job_id, pid=process.pid)
+    pid = _queue_submission_work("summary", job_id)
+    record_auto_summary_queued(job_id, pid=pid)
     return "queued"
 
 
 def launch_static_analysis(job_id: str) -> str:
     if not static_analysis_enabled():
         return "disabled"
-    job_dir = root_dir() / "jobs" / job_id
-    job_dir.mkdir(parents=True, exist_ok=True)
-    log_path = job_dir / "static_analysis.log"
-    try:
-        with log_path.open("ab") as log:
-            process = subprocess.Popen(
-                [sys.executable, "-m", "cslurm.collect.static_auto", job_id],
-                stdout=log,
-                stderr=subprocess.STDOUT,
-                stdin=subprocess.DEVNULL,
-                close_fds=True,
-                start_new_session=True,
-            )
-    except Exception as exc:
-        record_static_analysis_failure(job_id, exc)
-        return "failed"
-    record_static_analysis_queued(job_id, pid=process.pid)
+    pid = _queue_submission_work("static", job_id)
+    record_static_analysis_queued(job_id, pid=pid)
     return "queued"
 
 

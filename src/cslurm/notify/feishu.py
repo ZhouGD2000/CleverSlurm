@@ -1,4 +1,5 @@
 import base64
+import fcntl
 import hashlib
 import hmac
 import json
@@ -11,6 +12,7 @@ from typing import Any
 
 from cslurm.config import (
     consistent_config,
+    root_dir,
     feishu_message_format,
     feishu_secret,
     feishu_webhook_url,
@@ -18,7 +20,7 @@ from cslurm.config import (
     notification_enabled,
     notification_immediate_group_threshold,
 )
-from cslurm.db import connect, init_db
+from cslurm.db import run_write_transaction
 
 
 DEFAULT_URLOPEN = urllib.request.urlopen
@@ -195,161 +197,79 @@ def _is_due(row: dict[str, Any], *, force: bool, window_minutes: int) -> bool:
     return created_at <= datetime.now(timezone.utc) - timedelta(minutes=window_minutes)
 
 
-def _dispatch_grouped(
-    conn,
-    *,
-    mode: str,
-    limit: int,
-    force: bool,
-    urlopen,
-    webhook_url: str,
-    secret: str | None,
-) -> int:
-    rows = conn.execute(
-        """
-        select *
-        from notifications
-        where status = 'pending' and channel = 'feishu' and mode = ?
-        order by id
-        limit ?
-        """,
-        (mode, limit),
-    ).fetchall()
-    pending = [
-        {key: row[key] for key in row.keys()}
-        for row in rows
-        if _is_due({key: row[key] for key in row.keys()}, force=force, window_minutes=notification_batch_window_minutes())
-    ]
-    groups: dict[str, list[dict[str, Any]]] = defaultdict(list)
-    for row in pending:
-        groups[_group_key(row)].append(row)
-
-    sent = 0
-    for group_id, group_rows in groups.items():
-        title, body, summary = _summarize_group(mode, group_id, group_rows)
-        window_start = min(row.get("created_at") or "" for row in group_rows)
-        window_end = max(row.get("created_at") or "" for row in group_rows)
-        cursor = conn.execute(
-            """
-            insert into notification_batches (
-              group_id, mode, channel, created_at, window_start, window_end, status, summary_json
-            ) values (?, ?, ?, ?, ?, ?, ?, ?)
-            """,
-            (
-                group_id,
-                mode,
-                "feishu",
-                _now(),
-                window_start,
-                window_end,
-                "pending",
-                json.dumps(summary, ensure_ascii=False, sort_keys=True),
-            ),
-        )
-        batch_id = int(cursor.lastrowid)
-        try:
-            payload = build_card_payload(title, body, severity="normal" if mode == "batch" else "low", secret=secret)
-            send_payload(webhook_url, payload, urlopen=urlopen)
-        except Exception as exc:
-            conn.execute(
-                "update notification_batches set status = 'failed', summary_json = ? where id = ?",
-                (
-                    json.dumps({**summary, "last_error": f"{type(exc).__name__}: {exc}"}, ensure_ascii=False, sort_keys=True),
-                    batch_id,
-                ),
-            )
-            continue
-        notification_ids = [row["id"] for row in group_rows]
-        placeholders = ",".join("?" for _ in notification_ids)
-        conn.execute(
-            f"update notifications set status = 'batched', sent_at = ?, last_error = null where id in ({placeholders})",
-            (_now(), *notification_ids),
-        )
-        conn.execute("update notification_batches set status = 'sent', sent_at = ? where id = ?", (_now(), batch_id))
-        sent += 1
-    return sent
+def _claim(mode, limit, force):
+    """Claim and build delivery units in one short write transaction."""
+    def claim(conn):
+        conn.execute("begin immediate")
+        rows = [dict(r) for r in conn.execute(
+            "select * from notifications where status = 'pending' and channel = 'feishu' and mode = ? "
+            "and not exists (select 1 from notification_exclusions e where e.job_id = notifications.job_id) "
+            "order by id limit ?", (mode, limit))]
+        grouped = mode != "immediate" or len(rows) >= notification_immediate_group_threshold()
+        groups = defaultdict(list)
+        for row in rows:
+            if mode != "immediate" and not _is_due(row, force=force, window_minutes=notification_batch_window_minutes()):
+                continue
+            groups[_group_key(row) if grouped else str(row["id"])].append(row)
+        units = []
+        for group_id, items in groups.items():
+            batch_id = None
+            title = body = None
+            if grouped:
+                title, body, summary = _summarize_group(mode, group_id, items)
+                batch_id = conn.execute(
+                    "insert into notification_batches(group_id,mode,channel,created_at,window_start,window_end,status,summary_json) "
+                    "values (?,?,'feishu',?,?,?,'sending',?)",
+                    (group_id, mode, _now(), min(r.get("created_at") or "" for r in items),
+                     max(r.get("created_at") or "" for r in items), json.dumps(summary))).lastrowid
+            ids = [r["id"] for r in items]
+            conn.executemany("update notifications set status = 'sending' where id = ?", [(i,) for i in ids])
+            units.append((ids, batch_id, title, body, items[0]))
+        return units
+    return run_write_transaction(claim)
 
 
-def _dispatch_immediate(conn, *, limit: int, urlopen, webhook_url: str, secret: str | None) -> int:
-    sent = 0
-    rows = conn.execute(
-        """
-        select *
-        from notifications
-        where status = 'pending' and channel = 'feishu' and mode = 'immediate'
-        order by id
-        limit ?
-        """,
-        (limit,),
-    ).fetchall()
-    if len(rows) >= notification_immediate_group_threshold():
-        return _dispatch_grouped(
-            conn,
-            mode="immediate",
-            limit=limit,
-            force=True,
-            urlopen=urlopen,
-            webhook_url=webhook_url,
-            secret=secret,
-        )
-    for row in rows:
-        data = {key: row[key] for key in row.keys()}
-        try:
-            payload = _payload_for_notification(data, secret)
-            send_payload(webhook_url, payload, urlopen=urlopen)
-        except Exception as exc:
-            conn.execute(
-                """
-                update notifications
-                set status = 'failed', retry_count = retry_count + 1, last_error = ?
-                where id = ?
-                """,
-                (f"{type(exc).__name__}: {exc}", data["id"]),
-            )
-            continue
-        conn.execute(
-            "update notifications set status = 'sent', sent_at = ?, last_error = null where id = ?",
-            (_now(), data["id"]),
-        )
-        sent += 1
-    return sent
+def _finish(ids, batch_id, status, error=None):
+    def record(conn):
+        conn.executemany(
+            "update notifications set status = ?, sent_at = ?, last_error = ?, retry_count = retry_count + ? "
+            "where id = ? and status = 'sending'",
+            [(status, _now() if status in {"sent", "batched"} else None, error, int(error is not None), i) for i in ids])
+        if batch_id:
+            conn.execute("update notification_batches set status = ?, sent_at = ? where id = ?",
+                         ("sent" if status == "batched" else status, _now() if status == "batched" else None, batch_id))
+    run_write_transaction(record)
 
 
 @consistent_config
 def dispatch_pending(*, limit: int = 500, mode: str = "immediate", force: bool = False, urlopen=None) -> int:
-    if not notification_enabled():
+    if not notification_enabled() or not feishu_webhook_url():
         return 0
-    webhook_url = feishu_webhook_url()
-    if not webhook_url:
-        return 0
-    if mode not in {"immediate", "batch", "digest", "all"}:
-        raise ValueError(f"unsupported notification mode: {mode}")
-
-    sent = 0
-    with connect() as conn:
-        init_db(conn)
-        secret = feishu_secret()
-        if mode in {"immediate", "all"}:
-            sent += _dispatch_immediate(conn, limit=limit, urlopen=urlopen, webhook_url=webhook_url, secret=secret)
-        if mode in {"batch", "all"}:
-            sent += _dispatch_grouped(
-                conn,
-                mode="batch",
-                limit=limit,
-                force=force,
-                urlopen=urlopen,
-                webhook_url=webhook_url,
-                secret=secret,
-            )
-        if mode in {"digest", "all"}:
-            sent += _dispatch_grouped(
-                conn,
-                mode="digest",
-                limit=limit,
-                force=force,
-                urlopen=urlopen,
-                webhook_url=webhook_url,
-                secret=secret,
-            )
-        conn.commit()
-    return sent
+    if mode not in {"immediate", "batch", "digest", "all"} or not 1 <= limit <= 10000:
+        raise ValueError("Invalid notification mode or limit")
+    root_dir().mkdir(parents=True, exist_ok=True)
+    with (root_dir() / "dispatch.lock").open("a") as lock:
+        try:
+            fcntl.flock(lock, fcntl.LOCK_EX | fcntl.LOCK_NB)
+        except BlockingIOError:
+            return 0
+        # The process lock proves no live dispatcher owns these interrupted sends.
+        def recover(conn):
+            conn.execute("update notifications set status = 'uncertain', last_error = 'Interrupted delivery; verify receipt before retrying' where status = 'sending'")
+            conn.execute("update notification_batches set status = 'uncertain' where status = 'sending'")
+        run_write_transaction(recover)
+        sent = 0
+        for kind in (["immediate", "batch", "digest"] if mode == "all" else [mode]):
+            for ids, batch_id, title, body, row in _claim(kind, limit, force):
+                try:
+                    secret = feishu_secret()
+                    payload = (build_card_payload(title, body, severity=row.get("severity"), secret=secret)
+                               if batch_id else _payload_for_notification(row, secret))
+                    # A timeout can mean the receiver accepted the message. Never blindly resend.
+                    send_payload(feishu_webhook_url(), payload, urlopen=urlopen, attempts=1)
+                except Exception:
+                    _finish(ids, batch_id, "uncertain", "Delivery not confirmed; no automatic resend")
+                    continue
+                _finish(ids, batch_id, "batched" if batch_id else "sent")
+                sent += 1
+        return sent

@@ -143,12 +143,21 @@ destination can affect the next normal automatic dispatch, including any pending
 messages; it does not suppress or purge that queue.
 
 Connection tests are separate explicit actions against the selected **saved**
-configuration. AI tests send only a fixed short prompt with a 10-second timeout,
+configuration. AI tests send only a fixed short prompt with the configured timeout
+(30 seconds by default, capped at 45 seconds),
 64-token output budget, no fallback models or retries, and no forced JSON format.
 They verify basic connectivity, not every AI workflow. Feishu tests require a
 confirmation and send one labeled test message, without reading or dispatching
 the notification queue. Errors never return provider response bodies or secrets.
 Read-only and demo modes disable saving, activation, and external tests.
+
+Model tests and catalog discovery run in background subprocesses with a
+60-second overall deadline. Closing the settings dialog does not block browsing.
+Errors distinguish authentication, permissions, rate limits, DNS, TLS and timeout
+failures, without returning provider response bodies. The health view records
+requested/returned model IDs, elapsed time, fallback use and safe error codes,
+never prompts, responses or credentials. Additional request JSON cannot override
+`model`, `messages`, `system`, `stream`, `max_tokens` or `max_completion_tokens`.
 
 #### Discover available models
 
@@ -185,7 +194,15 @@ chat compatibility. Discovery is disabled in read-only and demo modes.
 ### Tasks
 
 - Task history: search Job ID, name, or submission command; filter by state and
-  partition; paginate in groups of 25, 50, or 100.
+  partition, UTC submission date range, working-directory substring and tag
+  substring; paginate in groups of 25, 50, or 100. These filters combine with AND.
+- Comparison: check 2 to 6 tasks and use the comparison button to inspect states,
+  resource records, commands, directories, Git revisions and summaries side by side.
+- Health: database integrity, cron enablement, last tracker success, free disk,
+  notification counts, latest 100 work items and model calls. Individual failed
+  work items can be requeued. The backup button creates and verifies a new private
+  database backup on the server; it never overwrites an existing file. See
+  [operations and recovery](operations.md).
 - Active tasks and failures: separate filters over the recorded scheduler state.
 - Overview: partition, node, elapsed time, memory, CPUs, working directory,
   submission command, and stored submission/completion summaries.

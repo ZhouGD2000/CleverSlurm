@@ -1,4 +1,7 @@
 import json
+import time
+import socket
+import ssl
 import urllib.error
 import urllib.request
 from collections.abc import Callable
@@ -30,10 +33,19 @@ _CONFIG_DEFAULT = object()
 
 
 class ModelRequestError(RuntimeError):
-    def __init__(self, message: str, *, retryable: bool, retry_same_model: bool = False):
+    def __init__(self, message: str, *, retryable: bool, retry_same_model: bool = False, code='request_error'):
         super().__init__(message)
         self.retryable = retryable
         self.retry_same_model = retry_same_model
+        self.code = code
+
+
+RESERVED_FIELDS = {'model', 'messages', 'system', 'stream', 'max_tokens', 'max_completion_tokens'}
+
+
+def validate_extra_body(body):
+    if not isinstance(body, dict) or RESERVED_FIELDS.intersection(body):
+        raise ValueError('Extra request JSON cannot override model, messages, system, stream or token limits')
 
 
 def _endpoint(base_url: str, suffix: str) -> str:
@@ -100,6 +112,7 @@ class ModelClient:
         self.temperature = ai_temperature() if temperature is None else temperature
         self.top_p = ai_top_p() if top_p is None else top_p
         self.extra_body = ai_extra_body() if extra_body is None else extra_body
+        validate_extra_body(self.extra_body)
         self.response_format = ai_response_format() if response_format is _CONFIG_DEFAULT else response_format
         self.fallback_models = ai_fallback_models() if fallback_models is None else fallback_models
         self.anthropic_version = anthropic_version or ai_anthropic_version()
@@ -107,6 +120,7 @@ class ModelClient:
         self.request_retries = ai_request_retries() if request_retries is None else max(0, request_retries)
         self.urlopen = urlopen or urllib.request.urlopen
         self.last_model: str | None = None
+        self.response_model: str | None = None
 
     def chat_json(self, messages: list[dict]) -> str:
         return self._chat_with_fallback(messages, require_json=True)
@@ -116,11 +130,13 @@ class ModelClient:
 
     def _chat_with_fallback(self, messages: list[dict], *, require_json: bool) -> str:
         errors = []
+        error_code = 'invalid_response'
         for model in self._candidate_models():
             for attempt in range(self.request_retries + 1):
                 try:
                     content = self._chat_json_once(messages, model=model)
                 except ModelRequestError as exc:
+                    error_code = exc.code
                     if not exc.retryable:
                         raise
                     if exc.retry_same_model and attempt < self.request_retries:
@@ -139,7 +155,7 @@ class ModelClient:
                 self.last_model = model
                 return content
         detail = " | ".join(errors) if errors else "no models configured"
-        raise RuntimeError(f"AI model request failed for all configured models: {detail}")
+        raise ModelRequestError(f"AI model request failed for all configured models: {detail}", retryable=True, code=error_code)
 
     def _candidate_models(self) -> list[str]:
         seen = set()
@@ -151,6 +167,20 @@ class ModelClient:
         return models
 
     def _chat_json_once(self, messages: list[dict], *, model: str) -> str:
+        from cslurm.ai.history import record_call
+        started = time.monotonic()
+        self.response_model = None
+        error_code = None
+        try:
+            return self._request_once(messages, model=model)
+        except Exception as exc:
+            error_code = getattr(exc, 'code', type(exc).__name__)
+            raise
+        finally:
+            record_call(self.format, model, self.response_model, int((time.monotonic() - started) * 1000),
+                        error_code, model != self.model)
+
+    def _request_once(self, messages: list[dict], *, model: str) -> str:
         if self.format == ANTHROPIC_COMPATIBLE:
             request = self._anthropic_request(messages, model=model)
         else:
@@ -159,18 +189,25 @@ class ModelClient:
             with self.urlopen(request, timeout=self.timeout) as response:
                 body = json.loads(response.read().decode())
         except urllib.error.HTTPError as exc:
-            detail = exc.fp.read().decode(errors="replace") if exc.fp else str(exc)
             retryable = exc.code in {408, 409, 425, 429} or exc.code >= 500
-            raise ModelRequestError(f"AI model request failed: HTTP {exc.code}: {detail}", retryable=retryable) from exc
+            status = exc.code
+            exc.close()
+            code = {401: 'authentication', 403: 'permission', 429: 'rate_limit'}.get(status, f'http_{status}')
+            raise ModelRequestError(f"AI model request failed: HTTP {status} ({code})", retryable=retryable, code=code) from None
         except urllib.error.URLError as exc:
+            code = ('dns' if isinstance(exc.reason, socket.gaierror) else 'tls' if isinstance(exc.reason, ssl.SSLError)
+                    else 'connect_timeout' if isinstance(exc.reason, TimeoutError) else 'connection')
             raise ModelRequestError(
-                f"AI model request failed: {exc.reason}",
+                f"AI model connection failed ({code})",
                 retryable=True,
                 retry_same_model=True,
+                code=code,
             ) from exc
         except TimeoutError as exc:
-            raise ModelRequestError(f"AI model request timed out: {exc}", retryable=True) from exc
+            raise ModelRequestError('AI model request timed out', retryable=True, code='timeout') from None
 
+        returned = body.get('model')
+        self.response_model = returned if isinstance(returned, str) and len(returned) <= 256 and self.api_key not in returned else None
         if self.format == ANTHROPIC_COMPATIBLE:
             return self._parse_anthropic_response(body)
         return self._parse_openai_response(body)

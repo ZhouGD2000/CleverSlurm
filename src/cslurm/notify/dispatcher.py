@@ -27,6 +27,8 @@ def enqueue_job_notification(conn, analysis: dict[str, Any], event_id: int | Non
 
     mode = analysis.get("recommended_notification") or "batch"
     status = "suppressed" if mode == "silent" else "pending"
+    if conn.execute("select 1 from notification_exclusions where job_id = ?", (analysis['job_id'],)).fetchone():
+        status = "suppressed"
     payload = {
         "job_id": analysis["job_id"],
         "title": analysis.get("title"),

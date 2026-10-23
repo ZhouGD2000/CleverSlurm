@@ -92,6 +92,10 @@ class Handler(BaseHTTPRequestHandler):
                     ops = self.server.operations
                     if ops.read_only or ops.demo:
                         raise PermissionError("Read-only/demo mode: configuration changes and tests are disabled")
+                    if body.get('background') and url.path != '/api/settings':
+                        action = 'models' if url.path.endswith('/models') else 'model_test'
+                        self.send(202, ops.start(action, body))
+                        return
                     with ops.lock:
                         if ops.active or ops.stopping:
                             raise BusyError("An operation is running; wait before editing configuration")
@@ -123,7 +127,7 @@ class Handler(BaseHTTPRequestHandler):
                 return
             query = parse_qs(url.query)
             param = lambda key, default="": query.get(key, [default])[0]
-            if self.server.database_error and url.path.startswith("/api/") and url.path != "/api/overview":
+            if self.server.database_error and url.path.startswith("/api/") and url.path not in {"/api/overview", "/api/health"}:
                 self.send(503, {"error": self.server.database_error})
                 return
             if url.path == "/api/overview":
@@ -138,11 +142,17 @@ class Handler(BaseHTTPRequestHandler):
                                 "database_error": self.server.database_error})
             elif url.path == "/api/settings":
                 self.send(200, settings.snapshot())
+            elif url.path == '/api/health':
+                from cslurm.doctor import health
+                self.send(200, health())
+            elif url.path == '/api/compare':
+                self.send(200, data.compare(param('ids').split(',')))
             elif url.path == "/api/jobs":
                 limit, offset = int(param("limit", "25")), int(param("offset", "0"))
                 if not 1 <= limit <= 100 or not 0 <= offset <= 10000000 or len(url.query) > 4096:
                     raise ValueError("Invalid pagination or search")
-                self.send(200, data.list_jobs(search=param("search"), state=param("state"), partition=param("partition"), limit=limit, offset=offset))
+                self.send(200, data.list_jobs(search=param("search"), state=param("state"), partition=param("partition"), limit=limit, offset=offset,
+                                               since=param('since'), until=param('until'), cwd=param('cwd'), tag=param('tag')))
             elif url.path.startswith("/api/jobs/"):
                 parts = url.path.split("/")
                 if len(parts) == 4:

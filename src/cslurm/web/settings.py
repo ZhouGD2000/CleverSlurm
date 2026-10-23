@@ -143,8 +143,9 @@ def _validate(values, kind, previous):
                     raise ValueError("Invalid endpoint URL")
                 if url.scheme == "http" and url.hostname not in {"localhost", "127.0.0.1", "::1"}:
                     raise ValueError("Remote endpoints must use HTTPS")
-            if key == "extra_body_json" and not isinstance(json.loads(value), dict):
-                raise ValueError("Expected a JSON object")
+            if key == "extra_body_json":
+                from cslurm.ai.client import validate_extra_body
+                validate_extra_body(json.loads(value))
         result[key] = value
     return result
 
@@ -259,12 +260,16 @@ def test_connection(body):
         # Explicit values prevent accidentally testing another active provider.
         client = ModelClient(api_key=key, base_url=values["base_url"], model=values["model"],
                              format=values["format"] or "openai", max_tokens=64,
-                             temperature=0.2, top_p=0.7, timeout=10, request_retries=0,
+                             temperature=0.2, top_p=0.7, timeout=min(45, int(values['timeout_seconds'] or 30)), request_retries=0,
                              fallback_models=[], extra_body=json.loads(values["extra_body_json"] or "{}"),
                              response_format=None, anthropic_version=values["anthropic_version"] or "2023-06-01")
         client.enable_thinking = None if not values["enable_thinking"] else values["enable_thinking"] == "true"
+        import time
+        started = time.monotonic()
         client.chat_raw([{"role": "user", "content": "Reply with OK."}])
-        return {"message": "模型连接成功（短文本请求）。"}
+        elapsed = round(time.monotonic() - started, 2)
+        return {"message": f"模型连接成功：{client.last_model}，{elapsed} 秒。", 'model': client.last_model,
+                'response_model': client.response_model, 'elapsed_seconds': elapsed}
     if kind == "feishu" and body.get("confirm_send") is True:
         from cslurm.notify.feishu import build_text_payload, build_card_payload, send_payload
         webhook = os.environ.get(values["webhook_url_env"] or "CSLURM_FEISHU_WEBHOOK") or values["webhook_url"]

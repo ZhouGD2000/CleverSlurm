@@ -1434,3 +1434,19 @@ dialog input,
     scroll-behavior: auto !important;
   }
 }
+.advanced-filters { display: flex; flex-wrap: wrap; align-items: end; gap: 10px; padding: 0 18px 14px; border-bottom: 1px solid var(--line); }
+.advanced-filters label { display: grid; gap: 5px; font-size: 11px; flex: 1 1 130px; min-width: 0; }
+.advanced-filters input { width: 100%; min-width: 0; padding: 7px; border: 1px solid var(--line); border-radius: 4px; background: white; }
+.compare-check { width: 14px; height: 14px; margin-right: 6px; vertical-align: middle; }
+.health-toolbar { display: flex; align-items: center; gap: 10px; margin: 12px 0; }
+#health-result { overflow-wrap: anywhere; font-size: 12px; }
+.health-facts { display: grid; grid-template-columns: 140px minmax(0,1fr); gap: 10px; padding-bottom: 16px; border-bottom: 1px solid var(--line); font-size: 13px; }
+.health-facts dd { margin: 0; overflow-wrap: anywhere; }
+.health-table-wrap { overflow: auto; max-height: 320px; margin: 12px 0 24px; }
+.health-table { border-collapse: collapse; width: 100%; font-size: 12px; }
+.health-table th, .health-table td { padding: 10px; text-align: left; vertical-align: top; border-bottom: 1px solid var(--line); min-width: 90px; max-width: 300px; overflow-wrap: anywhere; white-space: pre-wrap; }
+.health-table th { position: sticky; top: 0; background: #f4f7f6; z-index: 1; }
+#compare-dialog { width: min(1100px, calc(100vw - 32px)); }
+#compare-dialog .health-table-wrap { max-height: 65vh; }
+#health-content h3 { font-size: 15px; margin-top: 22px; }
+@media(max-width: 600px) { .advanced-filters { padding: 0 10px 12px; } .health-facts { grid-template-columns: 100px minmax(0,1fr); } }

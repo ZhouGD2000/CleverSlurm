@@ -176,7 +176,7 @@ def test_model_test_uses_selected_profile_and_no_fallback(configured, monkeypatc
         assert client.model == "test-model" and client.format == protocol
         assert client.api_key == "test-key" and client.base_url == "https://test.invalid"
         assert client.enable_thinking is False and client.extra_body == {}
-        assert client.fallback_models == [] and client.timeout == 10 and client.request_retries == 0
+        assert client.fallback_models == [] and client.timeout == 30 and client.request_retries == 0
         assert messages == [{"role": "user", "content": "Reply with OK."}]
         return "OK"
     monkeypatch.setattr(ModelClient, "chat_raw", fake_chat)

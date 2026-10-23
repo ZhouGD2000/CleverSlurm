@@ -17,6 +17,7 @@ const state = {
   detailVersion: 0,
   partitions: new Set(),
   statuses: new Set(),
+  comparison: new Set(),
 };
 const fromLink = new URLSearchParams(location.hash.slice(1)).get("token");
 if (fromLink) {
@@ -170,6 +171,10 @@ async function load() {
       partition: [...state.partitions].join(","),
       offset: state.offset,
       limit: state.limit,
+      since: $('since').value,
+      until: $('until').value,
+      cwd: $('cwd-filter').value.trim(),
+      tag: $('tag-filter').value.trim(),
     });
     const overview = await api("/api/overview");
     state.overview = overview;
@@ -285,7 +290,21 @@ function renderJobs(items) {
       "aria-label",
       `查看任务 ${job.job_id} ${job.job_name || ""}`,
     );
-    name.append(link, el("span", "job-name", job.job_name || "未命名任务"));
+    const check = el('input', 'compare-check');
+    check.type = 'checkbox';
+    check.setAttribute('aria-label', `对比任务 ${job.job_id}`);
+    check.checked = state.comparison.has(job.job_id);
+    check.addEventListener('change', () => {
+      if (check.checked && state.comparison.size >= 6) {
+        check.checked = false;
+        toast('最多选择 6 个任务');
+        return;
+      }
+      if (check.checked) state.comparison.add(job.job_id); else state.comparison.delete(job.job_id);
+      $('compare-count').textContent = `${state.comparison.size} / 6`;
+      $('compare-open').disabled = state.comparison.size < 2;
+    });
+    name.append(check, link, el("span", "job-name", job.job_name || "未命名任务"));
     name.title = job.job_name || job.job_id;
     const status = el("td");
     status.append(badge(job.state));
@@ -296,7 +315,7 @@ function renderJobs(items) {
     submitted.title = date(job.submitted_at);
     row.append(name, status, partition, elapsed, submitted);
     row.addEventListener("click", (e) => {
-      if (!e.target.closest("button")) selectJob(job.job_id);
+      if (!e.target.closest("button,input")) selectJob(job.job_id);
     });
     $("jobs").append(row);
   }
@@ -704,6 +723,7 @@ for (const [id, key] of [["state", "statuses"], ["partition", "partitions"]]) {
 }
 $("clear-filters").addEventListener("click", () => {
   $("search").value = "";
+  for (const id of ['since', 'until', 'cwd-filter', 'tag-filter']) $(id).value = '';
   state.partitions.clear();
   renderPartitions();
   filter("all");

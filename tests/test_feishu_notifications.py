@@ -434,6 +434,9 @@ def test_tracker_creates_and_dispatches_failed_notification(isolated_home, fake_
         )
 
     track_once()
+    from cslurm.work import drain
+    drain()
+    track_once()
 
     with sqlite3.connect(isolated_home / "db.sqlite") as conn:
         notification = conn.execute(

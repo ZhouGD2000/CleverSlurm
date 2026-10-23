@@ -1,5 +1,22 @@
 # Configuration
 
+## Background worker concurrency
+
+```toml
+[work]
+concurrency = 2
+```
+
+One worker pool per root runs at most this many static/summary/completion items
+concurrently (clamped to 1 through 8). Automatic tracker runs wake pending and
+retryable work. See [operations](operations.md).
+
+AI `extra_body_json` adds provider-specific request fields. It must be a JSON
+object and cannot override core fields: `model`, `messages`, `system`, `stream`,
+`max_tokens`, or `max_completion_tokens`. Use the dedicated model/token settings
+instead. This keeps the model selected in the UI equal to the model requested
+by the client. Both OpenAI and Anthropic formats enforce this restriction.
+
 CleverSlurm reads configuration from environment variables first, then from `~/.cslurm/config.toml`, then from built-in defaults.
 
 ## Storage
