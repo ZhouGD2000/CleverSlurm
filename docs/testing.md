@@ -128,6 +128,9 @@ cleverslurm real smoke ok
 
 ## Cluster Safety
 
+For web model configuration, see the [catalog and saved-selection verification](testing-model-catalog.md)
+procedure and live provider results. This test needs no Slurm submissions.
+
 For smoke tests on a shared cluster:
 
 - Submit only a new short job that you own.

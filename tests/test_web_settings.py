@@ -1,6 +1,8 @@
 import json
 import os
 import stat
+import subprocess
+import sys
 import threading
 
 import pytest
@@ -226,3 +228,35 @@ def test_discover_unsaved_draft_reuses_secret_without_saving(configured, monkeyp
         settings.fetch_models({**body, 'kind': 'feishu'})
     with pytest.raises(ValueError):
         settings.fetch_models({**body, 'values': {'base_url': 'https://a.invalid', 'api_key': ''}})
+
+
+@pytest.mark.parametrize('format,suffix', [('openai', '/chat/completions'), ('anthropic', '/v1/messages')])
+def test_saved_selection_is_used_by_fresh_process(configured, format, suffix):
+    saved = edit(profile_id='new', name='Selected catalog model', values={
+        'format': format, 'base_url': 'https://selected.invalid',
+        'api_key': 'selected-key', 'model': 'selected-model',
+        'fallback_models': '', 'request_retries': '0'})
+    assert load_config()['ai']['model'] == 'original'
+    edit(profile_id=saved['saved_id'], action='activate')
+    script = '''
+import io, json
+from cslurm.ai.client import ModelClient
+sent = []
+def transport(request, **kwargs):
+    payload = json.loads(request.data)
+    sent.append({'url': request.full_url, 'model': payload['model']})
+    return io.BytesIO(json.dumps({
+        'choices': [{'message': {'content': 'OK'}}],
+        'content': [{'type': 'text', 'text': 'OK'}]
+    }).encode())
+client = ModelClient(urlopen=transport)
+reply = client.chat_raw([{'role': 'user', 'content': 'Reply with OK.'}])
+print(json.dumps({'sent': sent, 'reply': reply, 'last_model': client.last_model,
+                  'fallback_models': client.fallback_models, 'format': client.format}))
+'''
+    env = {key: value for key, value in os.environ.items() if not key.startswith('CSLURM_AI_')}
+    result = subprocess.run([sys.executable, '-c', script], env=env, check=True,
+                            capture_output=True, text=True, timeout=10)
+    assert json.loads(result.stdout) == {
+        'sent': [{'url': 'https://selected.invalid' + suffix, 'model': 'selected-model'}],
+        'reply': 'OK', 'last_model': 'selected-model', 'fallback_models': [], 'format': format}
