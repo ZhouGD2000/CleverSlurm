@@ -1,0 +1,264 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <meta name="color-scheme" content="light" />
+    <title>CleverSlurm · 任务控制台</title>
+    <link rel="icon" href="/icons/cpu.svg" type="image/svg+xml" />
+    <link rel="stylesheet" href="/style.css" />
+    <script src="/app.js" defer></script>
+  </head>
+  <body>
+    <div id="auth" class="auth" hidden>
+      <form id="auth-form">
+        <img src="/icons/cpu.svg" alt="" width="32" height="32" />
+        <h1>连接 CleverSlurm</h1>
+        <label for="access-token">访问令牌 / cweb 访问链接</label>
+        <input id="access-token" type="password" autocomplete="off" required />
+        <button class="primary" type="submit">
+          连接控制台 <img src="/icons/arrow-right.svg" alt="" />
+        </button>
+        <p id="auth-error" role="alert"></p>
+      </form>
+    </div>
+    <div id="app" class="shell" hidden>
+      <aside class="sidebar">
+        <a class="brand" href="/" aria-label="CleverSlurm 首页"
+          ><span class="brand-mark"><img src="/icons/cpu.svg" alt="" /></span
+          ><span>CleverSlurm<small>JOB CONSOLE</small></span></a
+        >
+        <div class="workspace">
+          <span class="connection-dot"></span><span id="host">正在连接</span
+          ><span id="mode" class="mode">LOCAL</span>
+        </div>
+        <div class="nav-label">工作空间</div>
+        <nav aria-label="任务导航">
+          <button class="nav active" data-view="all" aria-label="全部任务">
+            <img src="/icons/layers.svg" alt="" /><span>全部任务</span
+            ><b id="nav-all">0</b>
+          </button>
+          <button class="nav" data-view="active" aria-label="活动任务">
+            <img src="/icons/activity.svg" alt="" /><span>活动任务</span
+            ><b id="nav-active">0</b>
+          </button>
+          <button class="nav" data-view="failed" aria-label="异常任务">
+            <img src="/icons/circle-alert.svg" alt="" /><span>异常任务</span
+            ><b id="nav-failed">0</b>
+          </button>
+        </nav>
+        <div class="nav-divider"></div>
+        <button class="nav" id="ask-open" aria-label="AI 问答">
+          <img src="/icons/sparkles.svg" alt="" /><span>AI 问答</span
+          ><span class="shortcut">↗</span>
+        </button>
+        <div class="sidebar-bottom">
+          <span class="nav-label">数据目录</span><code id="data-root">—</code>
+          <div class="local-label">
+            <img src="/icons/lock-keyhole.svg" alt="" /> 本机连接 · 令牌保护
+          </div>
+        </div>
+      </aside>
+      <div class="main">
+        <header class="topbar">
+          <div class="breadcrumb">
+            工作空间 <span>/</span> <strong>任务</strong>
+          </div>
+          <div class="topbar-right">
+            <span id="connection" class="connection"><i></i>已连接</span
+            ><span class="top-divider"></span><span id="clock">—</span>
+          </div>
+        </header>
+        <main>
+          <section class="heading">
+            <div>
+              <div class="eyebrow">JOB EXPLORER</div>
+              <h1 id="view-title">全部任务</h1>
+              <p>提交记录、运行状态与计算结果</p>
+            </div>
+            <div class="heading-actions">
+              <label class="auto-refresh"
+                ><input id="auto-refresh" type="checkbox" checked />
+                自动刷新</label
+              ><button
+                id="refresh"
+                class="primary"
+                title="更新任务状态，并按已有配置分析结果、派发通知"
+              >
+                <img src="/icons/refresh-cw.svg" alt="" />同步 Slurm
+              </button>
+            </div>
+          </section>
+          <div id="notice" class="notice" role="status" hidden></div>
+          <div id="error" class="error-banner" role="alert" hidden></div>
+          <section class="stats" aria-label="任务统计">
+            <button class="stat" data-view="all">
+              <span>全部记录 <img src="/icons/layers.svg" alt="" /></span
+              ><strong id="stat-total">—</strong><small>已跟踪任务</small>
+            </button>
+            <button class="stat" data-view="active">
+              <span>活动任务 <i class="dot green"></i></span
+              ><strong id="stat-active">—</strong><small>运行中 / 排队中</small>
+            </button>
+            <button class="stat" data-view="COMPLETED">
+              <span>已完成 <i class="dot blue"></i></span
+              ><strong id="stat-completed">—</strong
+              ><small>Slurm COMPLETED</small>
+            </button>
+            <button class="stat" data-view="failed">
+              <span>异常退出 <i class="dot red"></i></span
+              ><strong id="stat-failed">—</strong
+              ><small>失败 / 超时 / 资源错误</small>
+            </button>
+          </section>
+          <section class="explorer">
+            <div class="job-list">
+              <form id="filters" class="filters">
+                <label class="search"
+                  ><img src="/icons/search.svg" alt="" /><input
+                    id="search"
+                    aria-label="搜索任务"
+                    placeholder="搜索 Job ID、名称或命令"
+                    autocomplete="off"
+                  /><kbd>/</kbd></label
+                ><select id="state" aria-label="按状态筛选">
+                  <option value="">全部状态</option>
+                  <option value="active">活动任务</option>
+                  <option value="RUNNING">RUNNING</option>
+                  <option value="PENDING">PENDING</option>
+                  <option value="COMPLETED">COMPLETED</option>
+                  <option value="failed">异常退出</option>
+                  <option value="CANCELLED">CANCELLED</option>
+                  <option value="UNKNOWN">UNKNOWN</option></select
+                ><select id="partition" aria-label="按分区筛选">
+                  <option value="">全部分区</option></select
+                ><button
+                  type="button"
+                  class="icon-button"
+                  id="reload"
+                  aria-label="刷新记录"
+                  title="刷新记录"
+                >
+                  <img src="/icons/refresh-cw.svg" alt="" />
+                </button>
+              </form>
+              <div class="table-scroll">
+                <table class="jobs-table">
+                  <thead>
+                    <tr>
+                      <th>JOB ID / 名称</th>
+                      <th>状态</th>
+                      <th>分区 / 节点</th>
+                      <th>运行时长</th>
+                      <th>提交时间</th>
+                    </tr>
+                  </thead>
+                  <tbody id="jobs"></tbody>
+                </table>
+              </div>
+              <div id="empty" class="empty" hidden>
+                <img src="/icons/inbox.svg" alt="" />
+                <h2>没有匹配的任务</h2>
+                <button class="subtle" id="clear-filters">清除筛选</button>
+              </div>
+              <footer class="pagination">
+                <span id="page-info">正在读取记录…</span>
+                <div>
+                  <select id="page-size" aria-label="每页条数">
+                    <option value="25">25 / 页</option>
+                    <option value="50">50 / 页</option>
+                    <option value="100">100 / 页</option></select
+                  ><button
+                    id="previous"
+                    class="icon-button"
+                    aria-label="上一页"
+                    title="上一页"
+                  >
+                    <img src="/icons/chevron-left.svg" alt="" /></button
+                  ><button
+                    id="next"
+                    class="icon-button"
+                    aria-label="下一页"
+                    title="下一页"
+                  >
+                    <img src="/icons/chevron-right.svg" alt="" />
+                  </button>
+                </div>
+              </footer>
+            </div>
+            <aside id="detail" class="detail" aria-label="任务详情">
+              <div class="detail-placeholder">
+                <img src="/icons/panel-right.svg" alt="" />
+                <h2>任务详情</h2>
+                <p>尚未选择任务</p>
+              </div>
+            </aside>
+          </section>
+          <footer class="page-footer">
+            <span
+              ><span class="tiny-dot"></span> SQLite ·
+              <span id="record-time">—</span></span
+            ><span id="read-time">—</span>
+          </footer>
+        </main>
+      </div>
+    </div>
+    <dialog id="ask-dialog" class="ask-dialog">
+      <div class="dialog-title">
+        <div>
+          <span class="eyebrow">RECORDED FACTS</span>
+          <h2><img src="/icons/sparkles.svg" alt="" />询问任务</h2>
+        </div>
+        <button
+          class="icon-button dialog-close"
+          aria-label="关闭问答"
+          title="关闭"
+        >
+          <img src="/icons/x.svg" alt="" />
+        </button>
+      </div>
+      <div id="chat" class="chat" aria-live="polite">
+        <div class="chat-intro">最近运行了什么任务？</div>
+      </div>
+      <form id="ask-form">
+        <label class="sr-only" for="question">任务问题</label
+        ><textarea
+          id="question"
+          rows="2"
+          maxlength="2000"
+          placeholder="最近完成了哪些任务，分别做了什么？"
+          required
+        ></textarea>
+        <div class="ask-bottom">
+          <span>基于最近 10 个任务的已记录信息</span
+          ><button id="ask-send" class="primary" type="submit">
+            发送<img src="/icons/arrow-up.svg" alt="" />
+          </button>
+        </div>
+      </form>
+    </dialog>
+    <dialog id="cancel-dialog">
+      <div class="dialog-title">
+        <h2>取消任务</h2>
+        <button
+          class="icon-button dialog-close"
+          aria-label="关闭取消确认"
+          title="关闭"
+        >
+          <img src="/icons/x.svg" alt="" />
+        </button>
+      </div>
+      <p>将向 Slurm 发送单个任务的取消请求。</p>
+      <form id="cancel-form">
+        <label for="confirm-id"
+          >输入 Job ID <strong id="cancel-id"></strong> 确认</label
+        ><input id="confirm-id" autocomplete="off" required />
+        <div class="dialog-actions">
+          <button type="button" class="subtle dialog-close">返回</button
+          ><button class="danger" type="submit">确认取消</button>
+        </div>
+      </form>
+    </dialog>
+    <div id="toast" class="toast" role="status" hidden></div>
+  </body>
+</html>

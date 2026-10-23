@@ -17,6 +17,10 @@ ctrack = "cslurm.cli.ctrack:main"
 csummarize = "cslurm.cli.csummarize:main"
 cnotify = "cslurm.cli.cnotify:main"
 cshim = "cslurm.cli.cshim:main"
+cweb = "cslurm.cli.cweb:main"
+
+[tool.setuptools.package-data]
+"cslurm.web" = ["static/*", "static/icons/*"]
 
 [tool.setuptools.packages.find]
 where = ["src"]

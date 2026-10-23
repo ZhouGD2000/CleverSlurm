@@ -11,6 +11,7 @@ The design rule is simple: deterministic code records facts; AI only summarizes 
 - `cscancel`: wraps `scancel`, passes through scancel options, and records a cancellation request event with an optional CleverSlurm-only `--note`.
 - `ctrack`: polls `sacct` for known jobs and updates state, exit code, derived exit code, elapsed time, memory, and node list.
 - `cjobs`: queries sacct-like recent history, squeue-like active queues, job details, events, files, recorded commands, log tails, and AI answers over recent job facts.
+- `cweb`: local web console for task history, filters, logs, files, summaries, events, notifications, background tracking/AI operations, and explicitly enabled single-job cancellation.
 - `csummarize`: sends curated job facts to a configured OpenAI-compatible or Anthropic-compatible model API and stores structured AI summaries.
 - Feishu notifications: when `ctrack` sees a terminal job state, it records deterministic/semantic analysis, queues a notification, and immediately sends hard failures through a Feishu/Lark custom bot when configured.
 - Static script analysis: after `csbatch`, a detached worker identifies obvious MATLAB and Python entry commands and records their entry files without wrapping the runtime process.
@@ -217,6 +218,24 @@ export CSLURM_FEISHU_SECRET="..."
 ```
 
 ## Basic Usage
+
+### Web console
+
+```bash
+cweb                 # open the private access link printed in the terminal
+cweb --read-only     # browsing only
+cweb --demo          # isolated example data, without Slurm or model requests
+```
+
+For server data, run `cweb` on the Slurm management host and forward its loopback
+port with `ssh -N -L 8765:127.0.0.1:8765 mgmt`. Open the server's printed access
+link locally. Cancellation is disabled by default; `--allow-cancel` enables only
+explicitly confirmed single-job requests, never bulk cancellation.
+
+See [Web console setup, security, and operations](docs/web-ui.md) for pip/uv
+installation, SSH forwarding, background operations, and shutdown/uninstall.
+
+### Command line
 
 Submit a batch script:
 
