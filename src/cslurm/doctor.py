@@ -91,22 +91,24 @@ def restore(source, destination):
     return backup(destination / 'db.sqlite', source=source)
 
 
-def freeze_history():
-    """Explicit migration boundary. Never re-enable any existing notification."""
+def _freeze_history_records(conn):
     from cslurm.web.data import ACTIVE_STATES
     from cslurm.notify.analysis import normalize_state
+    conn.execute('begin immediate')
+    conn.create_function('normalized_state', 1, normalize_state)
+    conn.execute('insert or ignore into notification_exclusions(job_id,reason,created_at) '
+                 "select job_id,'Historical boundary',? from jobs where normalized_state(state) not in (" + ','.join('?' for _ in ACTIVE_STATES) + ')',
+                 (datetime.now(timezone.utc).isoformat(), *ACTIVE_STATES))
+    count = conn.execute("update notifications set status='suppressed',last_error='Historical boundary: no replay' "
+                         "where status in ('pending','failed','sending','uncertain')").rowcount
+    conn.execute("update notification_batches set status='suppressed' where status in ('pending','failed','sending','uncertain')")
+    return {'suppressed': count, 'excluded_jobs': conn.execute('select count(*) from notification_exclusions').fetchone()[0]}
+
+
+def freeze_history():
+    """Explicit migration boundary. Never re-enable any existing notification."""
     with ExitStack() as stack:
         for name in ['ctrack.lock', 'workers.lock', 'dispatch.lock']:
             lock = stack.enter_context((root_dir() / name).open('a'))
             fcntl.flock(lock, fcntl.LOCK_EX | fcntl.LOCK_NB)
-        def freeze(conn):
-            conn.execute('begin immediate')
-            conn.create_function('normalized_state', 1, normalize_state)
-            conn.execute('insert or ignore into notification_exclusions(job_id,reason,created_at) '
-                         "select job_id,'Historical boundary',? from jobs where normalized_state(state) not in (" + ','.join('?' for _ in ACTIVE_STATES) + ')',
-                         (datetime.now(timezone.utc).isoformat(), *ACTIVE_STATES))
-            count = conn.execute("update notifications set status='suppressed',last_error='Historical boundary: no replay' "
-                                 "where status in ('pending','failed','sending','uncertain')").rowcount
-            conn.execute("update notification_batches set status='suppressed' where status in ('pending','failed','sending','uncertain')")
-            return {'suppressed': count, 'excluded_jobs': conn.execute('select count(*) from notification_exclusions').fetchone()[0]}
-        return run_write_transaction(freeze)
+        return run_write_transaction(_freeze_history_records)

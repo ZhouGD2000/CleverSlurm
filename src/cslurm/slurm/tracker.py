@@ -92,6 +92,8 @@ def _track_once():
         jobs = conn.execute(
             "select job_id,state from jobs where state is null or state not in (" +
             ",".join("?" for _ in TERMINAL_STATES) + ")", tuple(TERMINAL_STATES)).fetchall()
+        # Older accounting records can contain "CANCELLED by <uid>" or a suffix.
+        jobs = [job for job in jobs if _normalize_state(job['state']) not in TERMINAL_STATES]
     rows = {}
     # Accounting calls never run while holding a database write transaction.
     for offset in range(0, len(jobs), 200):
@@ -117,7 +119,7 @@ def _track_once():
                 "update jobs set state=?,exit_code=?,derived_exit_code=?,elapsed=?,max_rss=?,nodelist=?,updated_at=? where job_id=?",
                 (new_state, row.get("ExitCode"), row.get("DerivedExitCode"), row.get("Elapsed"),
                  row.get("MaxRSS"), row.get("NodeList"), timestamp, job["job_id"]))
-            if old_state != new_state:
+            if _normalize_state(old_state) != new_state:
                 event_id = conn.execute(
                     "insert into job_events(job_id,event_time,event_type,raw_output) values (?,?,'STATE_CHANGED',?)",
                     (job["job_id"], timestamp, f"{old_state} -> {new_state}")).lastrowid

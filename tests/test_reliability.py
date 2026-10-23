@@ -67,7 +67,8 @@ def test_completion_failure_is_retried_without_historical_scan(isolated_home, mo
     monkeypatch.setenv('CSLURM_NOTIFICATION_AUTO_DISPATCH', 'false')
     with connect() as conn:
         init_db(conn)
-        conn.executemany('insert into jobs(job_id,state) values (?,?)', [('1','RUNNING'), ('old','COMPLETED')])
+        conn.executemany('insert into jobs(job_id,state) values (?,?)',
+                         [('1','RUNNING'), ('old','COMPLETED'), ('older','CANCELLED by 123')])
     monkeypatch.setattr('cslurm.slurm.tracker.run_slurm_command', lambda *a: SimpleNamespace(returncode=0, stdout='1|COMPLETED|0:0|0:0|00:01||node\n'))
     calls = []
     def handler(item):
