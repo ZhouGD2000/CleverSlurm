@@ -6,11 +6,11 @@ jobs:
   unit:
     runs-on: ubuntu-24.04
     strategy:
+      fail-fast: false
       matrix:
         python: ['3.10', '3.12', '3.13']
     env:
       CSLURM_RUN_REAL_SLURM: 'false'
-      CSLURM_NOTIFICATION_ENABLED: 'false'
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5
