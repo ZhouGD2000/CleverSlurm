@@ -10,6 +10,7 @@ from urllib.parse import parse_qs, urlsplit
 
 from cslurm.config import root_dir
 from cslurm.web import data, settings
+from cslurm.ai.models import ModelDiscoveryError
 from cslurm.web.operations import BusyError, Operations
 
 
@@ -87,7 +88,7 @@ class Handler(BaseHTTPRequestHandler):
                 body = json.loads(self.rfile.read(size))
                 if not isinstance(body, dict):
                     raise ValueError("Expected a JSON object")
-                if url.path in {"/api/settings", "/api/settings/test"}:
+                if url.path in {"/api/settings", "/api/settings/test", "/api/settings/models"}:
                     ops = self.server.operations
                     if ops.read_only or ops.demo:
                         raise PermissionError("Read-only/demo mode: configuration changes and tests are disabled")
@@ -96,6 +97,13 @@ class Handler(BaseHTTPRequestHandler):
                             raise BusyError("An operation is running; wait before editing configuration")
                         if url.path == "/api/settings":
                             self.send(200, settings.save(body))
+                        elif url.path == "/api/settings/models":
+                            try:
+                                self.send(200, settings.fetch_models(body))
+                            except (ValueError, settings.SettingsConflict, ModelDiscoveryError):
+                                raise
+                            except Exception:
+                                self.send(502, {"error": "获取模型列表失败，请检查配置和网络，或手动填写模型名。"})
                         else:
                             try:
                                 result = settings.test_connection(body)
@@ -164,6 +172,8 @@ class Handler(BaseHTTPRequestHandler):
             self.send(409, {"error": str(exc)})
         except settings.SettingsConflict as exc:
             self.send(409, {"error": str(exc)})
+        except ModelDiscoveryError as exc:
+            self.send(502, {"error": str(exc), "code": exc.code})
         except (ValueError, TypeError):
             message = "配置无效，请检查接口格式、地址、环境变量名称、数值范围及连接必填项。" if self.path.startswith("/api/settings") else "Invalid request. Check job ID, confirmation, and input values."
             self.send(400, {"error": message})

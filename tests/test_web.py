@@ -181,6 +181,35 @@ def test_settings_api_auth_readonly_and_conflicts(server, monkeypatch):
     assert code == 502 and 'sensitive-secret' not in json.dumps(result)
 
 
+def test_model_discovery_api_permissions_and_errors(server, monkeypatch):
+    from cslurm.web import settings
+    from cslurm.ai.models import ModelDiscoveryError
+    body = {'kind': 'ai', 'id': 'new', 'revision': request(server, '/api/settings')[1]['revision'],
+            'values': {'base_url': 'https://example.invalid', 'api_key': 'key'}}
+    calls = []
+    def fake(body):
+        calls.append(body)
+        return {'models': [{'id': 'a', 'name': ''}], 'truncated': False}
+    monkeypatch.setattr(settings, 'fetch_models', fake)
+    assert request(server, '/api/settings/models', body=body, auth=False)[0] == 403
+    assert request(server, '/api/settings/models', body=body, headers={'Origin': 'https://evil.invalid'})[0] == 403
+    for flag in ['read_only', 'demo']:
+        setattr(server.operations, flag, True)
+        assert request(server, '/api/settings/models', body=body)[0] == 403
+        setattr(server.operations, flag, False)
+    assert not calls
+    assert request(server, '/api/settings/models', body=body)[1]['models'][0]['id'] == 'a'
+    def limited(_):
+        raise ModelDiscoveryError('rate_limited', 'HTTP 429')
+    monkeypatch.setattr(settings, 'fetch_models', limited)
+    code, result = request(server, '/api/settings/models', body=body)
+    assert code == 502 and result['code'] == 'rate_limited'
+    def unexpected(_):
+        raise RuntimeError('do-not-expose-private-key')
+    monkeypatch.setattr(settings, 'fetch_models', unexpected)
+    assert 'do-not-expose' not in json.dumps(request(server, '/api/settings/models', body=body))
+
+
 def test_read_only_and_demo_reject_operations(web_db):
     for operations in [Operations(read_only=True, allow_cancel=True), Operations(demo=True, allow_cancel=True)]:
         for action in ["refresh", "ask", "summarize", "cancel"]:

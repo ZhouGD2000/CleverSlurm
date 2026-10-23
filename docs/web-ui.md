@@ -150,6 +150,38 @@ confirmation and send one labeled test message, without reading or dispatching
 the notification queue. Errors never return provider response bodies or secrets.
 Read-only and demo modes disable saving, activation, and external tests.
 
+#### Discover available models
+
+In **AI models**, choose `openai` or `anthropic`, enter the Base URL and API key
+(or a server-side key environment variable), then click the download icon next
+to the model name, **获取可选模型**. A search field and model selector appear.
+You can query a new, unsaved profile without entering a model name first. For an
+existing profile, a blank key field uses the saved key. Search matches model IDs
+and display names; selecting a result fills the model name without saving or
+activating the profile. Save explicitly when ready.
+
+Discovery runs on the web server (on the management host when using an SSH
+tunnel), not in the browser. It sends authenticated GET requests to model-list
+endpoints, not chat prompts, and does not write configuration, touch jobs, or
+send notifications. OpenAI-format catalogs use Bearer authentication; Anthropic
+catalogs use `x-api-key` and `anthropic-version`. Only HTTP 404/405 triggers a
+fallback endpoint. Common Anthropic-compatible `/anthropic`, `/api/anthropic`,
+and `/coding` prefixes can fall back to the same host's parent OpenAI catalog.
+
+For nonstandard routing, set **模型列表地址（可选）** (`models_url`) to a full
+model-list URL on the same origin as the Base URL. This overrides discovery
+only, not chat requests. Remote URLs require HTTPS. Redirects are not followed
+to avoid forwarding credentials. Requests have bounded timeouts and response
+sizes; paginated catalogs stop at four pages or 2,000 models and show when the
+list is incomplete. Changing the connection fields clears the previous list.
+
+Some services do not expose catalogs, require additional permissions, or return
+an empty list. Authentication, permission, rate-limit, and connection errors are
+shown explicitly; manual model entry always remains available. A catalog entry
+is not a guarantee that a model is free, enabled for the account, or suitable
+for chat. Save the choice and use the separate connection test to check basic
+chat compatibility. Discovery is disabled in read-only and demo modes.
+
 ### Tasks
 
 - Task history: search Job ID, name, or submission command; filter by state and
@@ -190,7 +222,7 @@ restart loses this progress history, not the underlying database records.
 | Cancel task | Disabled unless started with `--allow-cancel`. Requires typing the exact selected Job ID. Only a known active numeric job or individual array-task ID is accepted. Recorded array parents, lists, ranges, flags, and unknown/terminal jobs are rejected. |
 
 There is no bulk cancellation, submission, arbitrary command execution,
-configuration/credential editor, or file deletion in the web interface. A
+arbitrary configuration-file editor, or file deletion in the web interface. A
 successful cancellation means Slurm accepted the request; the UI does not mark
 the task `CANCELLED` until a subsequent tracking update confirms it.
 

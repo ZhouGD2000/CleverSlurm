@@ -197,3 +197,32 @@ def test_feishu_test_requires_confirmation_and_sends_only_test(configured, monke
     assert args[0] == "https://example.invalid/private-hook"
     assert "测试" in json.dumps(args[1], ensure_ascii=False)
     assert "sign" in args[1] and kwargs["attempts"] == 1
+
+
+def test_discover_unsaved_draft_reuses_secret_without_saving(configured, monkeypatch):
+    from cslurm.ai import models
+    calls = []
+    def fake(**kwargs):
+        calls.append(kwargs)
+        return {'models': [{'id': 'available', 'name': ''}], 'truncated': False}
+    monkeypatch.setattr(models, 'list_models', fake)
+    before = configured.read_bytes()
+    body = dict(kind='ai', id='current', revision=settings.snapshot()['revision'],
+                values={'base_url': 'https://draft.invalid', 'api_key': None})
+    assert settings.fetch_models(body)['models'][0]['id'] == 'available'
+    assert calls[-1]['api_key'] == 'private-key' and calls[-1]['base_url'] == 'https://draft.invalid'
+    body.update(id='new', values={'format': 'anthropic', 'base_url': 'https://new.invalid', 'api_key': 'new-key'})
+    settings.fetch_models(body)
+    assert calls[-1]['api_key'] == 'new-key' and calls[-1]['format'] == 'anthropic'
+    assert configured.read_bytes() == before
+    assert not (configured.parent / 'config-backups').exists()
+    monkeypatch.setenv('MODEL_TEST_KEY', 'env-key')
+    body['values'] = {'base_url': 'https://new.invalid', 'api_key_env': 'MODEL_TEST_KEY'}
+    settings.fetch_models(body)
+    assert calls[-1]['api_key'] == 'env-key'
+    with pytest.raises(settings.SettingsConflict):
+        settings.fetch_models({**body, 'revision': 'old'})
+    with pytest.raises(ValueError):
+        settings.fetch_models({**body, 'kind': 'feishu'})
+    with pytest.raises(ValueError):
+        settings.fetch_models({**body, 'values': {'base_url': 'https://a.invalid', 'api_key': ''}})

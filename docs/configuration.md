@@ -159,6 +159,13 @@ Supported `format` values:
 - `openai`: POSTs to `<base_url>/chat/completions`.
 - `anthropic`: POSTs to `<base_url>/v1/messages`.
 
+The web settings page can fetch a provider's model catalog using the selected
+format, Base URL, and API key before a profile is saved. Optional `models_url`
+in `[ai]` or a named `[web.ai.<id>]` profile overrides only the catalog endpoint;
+it must be a full URL on the same origin as `base_url`. It does not change chat
+routing or the configured model. See [model discovery](web-ui.md#discover-available-models)
+for endpoint fallback, permissions, and manual selection behavior.
+
 Examples:
 
 ```toml

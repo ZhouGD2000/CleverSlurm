@@ -26,6 +26,7 @@ FIELDS = {
     "ai": [
         field("format", "接口格式", choices=["openai", "anthropic"], default="openai"),
         field("base_url", "Base URL"), field("model", "模型名称"),
+        field("models_url", "模型列表地址（可选）"),
         field("api_key", "API Key", secret=True), field("api_key_env", "API Key 环境变量"),
         field("fallback_models", "备用模型（逗号分隔）"),
         field("timeout_seconds", "请求超时（秒）", bounds=[1, 600], default="60"),
@@ -136,7 +137,7 @@ def _validate(values, kind, previous):
                     raise ValueError("Number outside allowed range")
             if key.endswith("_env") and not re.fullmatch(r"[A-Za-z_][A-Za-z0-9_]*", value):
                 raise ValueError("Expected an environment variable name")
-            if key in {"base_url", "webhook_url"}:
+            if key in {"base_url", "webhook_url", "models_url"}:
                 url = urlsplit(value)
                 if url.scheme not in {"https", "http"} or not url.hostname or url.username or url.password or url.fragment:
                     raise ValueError("Invalid endpoint URL")
@@ -275,3 +276,25 @@ def test_connection(body):
         send_payload(webhook, payload, timeout=10, attempts=1)
         return {"message": "飞书已接受测试消息。"}
     raise ValueError("Explicit confirmation is required for a Feishu test")
+
+
+def fetch_models(body):
+    from cslurm.ai.models import list_models
+    if body.get("kind") != "ai":
+        raise ValueError("Model discovery is only available for AI profiles")
+    profile_id = body.get("id", "current")
+    section = None if profile_id == "new" else _section("ai", profile_id)
+    _, config, revision = _read()
+    if body.get("revision") != revision:
+        raise SettingsConflict("配置已修改，请重新载入后获取模型列表。")
+    allowed = {"format", "base_url", "models_url", "api_key", "api_key_env", "anthropic_version"}
+    draft = body.get("values", {})
+    if not isinstance(draft, dict) or set(draft) - allowed:
+        raise ValueError("Unexpected discovery fields")
+    previous = {k: v for k, v in config.get(section, {}).items() if k in allowed}
+    values = _validate(draft, "ai", previous)
+    key = (os.environ.get(values["api_key_env"]) if values["api_key_env"] else None) or values["api_key"]
+    if not key or not values["base_url"]:
+        raise ValueError("Base URL and API key are required")
+    return list_models(base_url=values["base_url"], api_key=key, format=values["format"] or "openai",
+                       models_url=values["models_url"], anthropic_version=values["anthropic_version"] or "2023-06-01")
