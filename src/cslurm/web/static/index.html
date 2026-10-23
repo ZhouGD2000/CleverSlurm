@@ -10,6 +10,7 @@
     <script src="/app.js" defer></script>
     <script src="/settings.js" defer></script>
     <script src="/health.js" defer></script>
+    <script src="/servers.js" defer></script>
   </head>
   <body>
     <div id="auth" class="auth" hidden>
@@ -63,8 +64,11 @@
       </aside>
       <div class="main">
         <header class="topbar">
-          <div class="breadcrumb">
-            工作空间 <span>/</span> <strong>任务</strong>
+          <div class="workspace-picker">
+            <label class="sr-only" for="workspace-select">当前服务器</label>
+            <select id="workspace-select"><option value="local">本机（cweb 所在主机）</option></select>
+            <button id="servers-open" class="icon-button" title="管理服务器" aria-label="管理服务器"><img src="/icons/settings.svg" alt="" /></button>
+            <span id="workspace-target" class="sr-only">本机</span>
           </div>
           <div class="topbar-right">
             <button id="health-open" class="icon-button" aria-label="系统健康与后台任务" title="系统健康与后台任务"><img src="/icons/activity.svg" alt="" /></button>
@@ -303,6 +307,31 @@
           ><button class="danger" type="submit">确认取消</button>
         </div>
       </form>
+    </dialog>
+    <dialog id="servers-dialog" class="servers-dialog">
+      <div class="dialog-title"><h2>服务器</h2><button id="servers-close" class="icon-button" aria-label="关闭服务器管理" title="关闭"><img src="/icons/x.svg" alt="" /></button></div>
+      <div id="servers-error" class="error-banner" role="alert" hidden></div>
+      <div id="servers-list" class="servers-list"></div>
+      <form id="server-form">
+        <div class="server-form-heading"><h3 id="server-form-title">添加服务器</h3><button id="server-new" type="button" class="icon-button" title="添加服务器" aria-label="添加服务器"><img src="/icons/plus.svg" alt="" /></button></div>
+        <input id="server-id" type="hidden" />
+        <fieldset id="server-fields" class="server-fields">
+          <label>名称<input id="server-name" maxlength="80" required autocomplete="off" /></label>
+          <label>SSH 配置别名<input id="server-alias" maxlength="128" required autocomplete="off" placeholder="cluster" pattern="[A-Za-z0-9][A-Za-z0-9_.-]*" /></label>
+          <label>远端 Python<input id="server-python" required value="python3" autocomplete="off" /></label>
+          <label>远端数据目录<input id="server-root" required value="~/.cslurm" autocomplete="off" /></label>
+          <label class="server-full">新安装目录<input id="server-install-dir" required value="~/.local/share/cleverslurm" autocomplete="off" /></label>
+          <label class="server-check server-full"><input id="server-read-only" type="checkbox" checked />只读连接</label>
+        </fieldset>
+        <div class="dialog-actions"><button id="server-save" class="primary" type="submit"><img src="/icons/save.svg" alt="" />保存服务器</button></div>
+      </form>
+      <section id="server-install-panel" class="server-install-panel" hidden>
+        <h3>安装 CleverSlurm</h3>
+        <p id="server-install-target"></p>
+        <p>创建独立环境；不覆盖已有目录、修改已有配置或启用自动跟踪。</p>
+        <label for="server-install-confirm">输入 SSH 别名确认安装</label><input id="server-install-confirm" autocomplete="off" />
+        <button id="server-install" type="button" class="primary"><img src="/icons/download.svg" alt="" />确认安装</button>
+      </section>
     </dialog>
     <div id="toast" class="toast" role="status" hidden></div>
   </body>

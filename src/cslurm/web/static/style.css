@@ -1450,3 +1450,34 @@ dialog input,
 #compare-dialog .health-table-wrap { max-height: 65vh; }
 #health-content h3 { font-size: 15px; margin-top: 22px; }
 @media(max-width: 600px) { .advanced-filters { padding: 0 10px 12px; } .health-facts { grid-template-columns: 100px minmax(0,1fr); } }
+/* Workspace controls stay compact in both the local and SSH views. */
+.workspace-picker { display: flex; align-items: center; gap: 6px; min-width: 0; width: 300px; max-width: 55%; }
+.workspace-picker select { min-width: 0; flex: 1; width: 100%; }
+.workspace-picker .icon-button { flex-shrink: 0; }
+#workspace-target { color: inherit; overflow-wrap: anywhere; }
+.servers-dialog { width: min(760px, calc(100vw - 28px)); max-height: 88vh; overflow-y: auto; }
+.servers-list { border-bottom: 1px solid var(--border, #dce2df); }
+.server-row { display: flex; align-items: center; justify-content: space-between; gap: 16px; padding: 14px 0; border-top: 1px solid var(--border, #dce2df); }
+.server-row-info { display: grid; gap: 4px; min-width: 0; }
+.server-row-info code, .server-row-info small, .server-failure { overflow-wrap: anywhere; }
+.server-status { font-size: 12px; color: #326455; }
+.server-failure { color: #a13138; font-size: 12px; margin: 0; }
+.server-tools { display: flex; gap: 4px; flex-wrap: wrap; justify-content: flex-end; flex-shrink: 0; max-width: 240px; }
+.server-form-heading { display: flex; align-items: center; justify-content: space-between; margin-top: 16px; }
+.server-fields { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: 12px; border: 0; padding: 0; margin: 0; min-width: 0; }
+.server-fields label { display: grid; gap: 6px; min-width: 0; font-size: 13px; }
+.server-fields input:not([type=checkbox]) { width: 100%; min-width: 0; }
+.server-full { grid-column: 1 / -1; }
+.server-fields .server-check { display: flex; align-items: center; }
+.server-install-panel { border-top: 1px solid #dce2df; margin-top: 16px; padding-top: 12px; }
+#server-install-target { overflow-wrap: anywhere; }
+#server-install-confirm { display: block; width: 100%; margin: 8px 0 12px; }
+@media (max-width: 700px) {
+  .workspace-picker { width: 220px; max-width: calc(100% - 82px); }
+  .workspace-picker select { font-size: 11px; padding: 6px 4px; }
+  .topbar { height: 52px; padding: 0 12px; }
+  .topbar-right .connection, .topbar-right .top-divider, #clock { display: none; }
+  .server-row { align-items: flex-start; flex-direction: column; gap: 8px; }
+  .server-tools { justify-content: flex-start; max-width: 100%; }
+  .server-fields { grid-template-columns: minmax(0, 1fr); }
+}

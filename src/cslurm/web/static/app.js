@@ -18,6 +18,9 @@ const state = {
   partitions: new Set(),
   statuses: new Set(),
   comparison: new Set(),
+  workspace: 'local',
+  workspaceVersion: 0,
+  mutations: 0,
 };
 const fromLink = new URLSearchParams(location.hash.slice(1)).get("token");
 if (fromLink) {
@@ -85,22 +88,34 @@ function auth(message = "") {
   $("auth-error").textContent = message;
 }
 async function api(path, body) {
+  const management = path === '/api/servers';
+  const workspace = management ? 'local' : state.workspace;
+  const version = state.workspaceVersion;
+  if (body && !management) state.mutations++;
+  try {
   const response = await fetch(path, {
-    signal: AbortSignal.timeout(20000),
+    signal: AbortSignal.timeout(workspace === 'local' && !management ? 20000 : 90000),
     method: body ? "POST" : "GET",
     headers: {
       Authorization: `Bearer ${state.token}`,
+      'X-CSlurm-Server': workspace,
       ...(body ? { "Content-Type": "application/json" } : {}),
     },
     ...(body ? { body: JSON.stringify(body) } : {}),
   });
   const data = await response.json();
+  if (!management && version !== state.workspaceVersion) {
+    const error = new Error('服务器已切换'); error.staleWorkspace = true; throw error;
+  }
   if (!response.ok) {
     if (response.status === 403 && data.error.includes("access link"))
       auth("访问令牌已失效，请使用 cweb 启动时显示的新链接。");
     throw new Error(data.error || `HTTP ${response.status}`);
   }
   return data;
+  } finally {
+    if (body && !management) state.mutations--;
+  }
 }
 function iconButton(name, label, callback) {
   const button = el("button", "icon-button");
@@ -164,6 +179,7 @@ async function load() {
     return;
   }
   state.loading = true;
+  const workspaceVersion = state.workspaceVersion;
   try {
     const query = new URLSearchParams({
       search: $("search").value.trim(),
@@ -226,7 +242,7 @@ async function load() {
       ? "DEMO"
       : overview.read_only
         ? "READ ONLY"
-        : "LOCAL";
+        : state.workspace === 'local' ? "LOCAL" : "SSH";
     $("notice").textContent = overview.demo
       ? "演示数据 · 与实际 Slurm、AI 和通知隔离，操作已禁用"
       : overview.read_only
@@ -241,6 +257,7 @@ async function load() {
       return load();
     }
     renderJobs(result.items);
+    if (!result.items.length && !state.selected) $('detail').replaceChildren(el('p', 'small-empty', '没有可显示的任务'));
     $("page-info").textContent = result.total
       ? `${state.offset + 1}–${state.offset + result.items.length} / ${result.total} 条记录`
       : "0 条记录";
@@ -257,11 +274,13 @@ async function load() {
     show($("app"));
     error("");
     setBusy(state.busy);
+    if (typeof ensureServers === 'function') ensureServers();
     if (!state.selected && result.items.length)
       await selectJob(result.items[0].job_id, false);
     if (overview.active_operation && !state.busy)
       watch(overview.active_operation);
   } catch (e) {
+    if (workspaceVersion !== state.workspaceVersion) return;
     error(e.message);
     $("connection").classList.add("offline");
     $("connection").replaceChildren(
@@ -270,6 +289,7 @@ async function load() {
     );
     if ($("app").hidden) auth(e.message);
   } finally {
+    if (workspaceVersion !== state.workspaceVersion) return;
     state.loading = false;
     if (state.reloadPending) {
       state.reloadPending = false;

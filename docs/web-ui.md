@@ -5,6 +5,13 @@ single-user tool running as your Unix account, not a public or multi-user web
 service. No Node.js, frontend build, web framework, or CDN is needed at runtime.
 The packaged HTML, JavaScript, CSS, and Lucide icons are served locally.
 
+The default workspace remains the host running `cweb`. The top-bar selector also
+supports SSH servers using that host's existing SSH configuration. Add/connect
+servers through the adjacent management button, then switch between local and
+remote tasks, logs and settings. Uninstalled environments support an explicitly
+confirmed, non-overwriting installation. See [SSH workspaces](multi-server.md)
+for interpreter selection, installation prerequisites and safety boundaries.
+
 The partition filter is a multi-select checkbox list of individual partitions.
 For example, a recorded `CPU,CPU2` job matches either `CPU` or `CPU2`.
 Multiple selections use OR matching with exact partition names (`CPU` does not
@@ -238,6 +245,8 @@ restart loses this progress history, not the underlying database records.
 | AI question | Run `cjobs ask` over the most recent 10 recorded jobs, with the existing deterministic fallback on model failure. It does not execute commands proposed by the model. |
 | Cancel task | Disabled unless started with `--allow-cancel`. Requires typing the exact selected Job ID. Only a known active numeric job or individual array-task ID is accepted. Recorded array parents, lists, ranges, flags, and unknown/terminal jobs are rejected. |
 
+Server management additionally supports saved SSH connections and a fixed,
+confirmed installer; these are not arbitrary shell-command endpoints.
 There is no bulk cancellation, submission, arbitrary command execution,
 arbitrary configuration-file editor, or file deletion in the web interface. A
 successful cancellation means Slurm accepted the request; the UI does not mark

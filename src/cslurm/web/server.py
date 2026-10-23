@@ -12,6 +12,7 @@ from cslurm.config import root_dir
 from cslurm.web import data, settings
 from cslurm.ai.models import ModelDiscoveryError
 from cslurm.web.operations import BusyError, Operations
+from cslurm.web.remotes import RemoteError, RemoteManager
 
 
 STATIC = Path(__file__).parent / "static"
@@ -24,9 +25,11 @@ class ConsoleServer(ThreadingHTTPServer):
         self.token = secrets.token_urlsafe(32)
         self.database_error = data.check_integrity()
         self.operations = Operations(read_only=read_only, allow_cancel=allow_cancel, demo=demo)
+        self.remotes = RemoteManager(root_dir(), read_only=read_only, allow_cancel=allow_cancel, demo=demo)
         super().__init__(("127.0.0.1", port), Handler)
 
     def server_close(self):
+        self.remotes.close()
         self.operations.close()
         super().server_close()
 
@@ -74,10 +77,28 @@ class Handler(BaseHTTPRequestHandler):
     def do_POST(self):
         self.handle_request(True)
 
+    def route_remote(self, path, body=None):
+        manager = self.server.remotes
+        manager.read_only = self.server.operations.read_only
+        manager.demo = self.server.operations.demo
+        if path == '/api/servers':
+            self.send(200, manager.snapshot() if body is None else manager.action(body))
+            return True
+        identifier = self.headers.get('X-CSlurm-Server', 'local')
+        if identifier != 'local' and path.startswith('/api/'):
+            if manager.demo or (body is not None and manager.read_only):
+                raise PermissionError('Read-only/demo console: remote operations disabled')
+            status, result = manager.request(identifier, path, body)
+            self.send(status, result)
+            return True
+        return False
+
     def handle_request(self, post):
         try:
             url = urlsplit(self.path)
             self.check_access(url.path.startswith("/api/"))
+            if not post and self.route_remote(self.path):
+                return
             if post:
                 if self.headers.get("Content-Type", "").split(";")[0] != "application/json":
                     raise ValueError("Content-Type must be application/json")
@@ -88,6 +109,8 @@ class Handler(BaseHTTPRequestHandler):
                 body = json.loads(self.rfile.read(size))
                 if not isinstance(body, dict):
                     raise ValueError("Expected a JSON object")
+                if self.route_remote(self.path, body):
+                    return
                 if url.path in {"/api/settings", "/api/settings/test", "/api/settings/models"}:
                     ops = self.server.operations
                     if ops.read_only or ops.demo:
@@ -180,6 +203,8 @@ class Handler(BaseHTTPRequestHandler):
             self.send(404, {"error": exc.args[0]})
         except BusyError as exc:
             self.send(409, {"error": str(exc)})
+        except RemoteError as exc:
+            self.send(502, {"error": str(exc)})
         except settings.SettingsConflict as exc:
             self.send(409, {"error": str(exc)})
         except ModelDiscoveryError as exc:

@@ -61,6 +61,7 @@ $('health-close').addEventListener('click', () => $('health-dialog').close());
 $('health-reload').addEventListener('click', loadHealth);
 $('health-backup').addEventListener('click', async () => {
   if (!settingsWritable() || state.busy) return;
+  setBusy(true);
   $('health-backup').disabled = true;
   try {
     const op = await api('/api/operations', {action: 'backup'});
@@ -75,7 +76,7 @@ $('health-backup').addEventListener('click', async () => {
       break;
     }
   } catch (e) { $('health-result').textContent = e.message; }
-  finally { $('health-backup').disabled = !settingsWritable(); }
+  finally { setBusy(false); $('health-backup').disabled = !settingsWritable(); }
 });
 
 let advancedTimer;
