@@ -28,6 +28,8 @@ def filesystem_type(path: Path) -> str | None:
 
 def require_local_database(path: Path | None = None) -> None:
     path = path or db_path()
+    if (path.parent / ".database-maintenance").exists():
+        raise UnsafeDatabaseError("Database maintenance is active; retry on the management host after recovery finishes.")
     fs = filesystem_type(path)
     if fs in {"nfs", "nfs4", "cifs", "smb3", "lustre", "ceph", "glusterfs", "gpfs", "9p"} or (fs and fs.startswith("fuse")):
         raise UnsafeDatabaseError(

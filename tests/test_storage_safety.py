@@ -33,6 +33,13 @@ def test_network_mount_refused_before_sqlite_open(isolated_home, monkeypatch):
             pass
 
 
+def test_maintenance_guard_prevents_opening_database(isolated_home):
+    (isolated_home / '.database-maintenance').mkdir()
+    with pytest.raises(storage.UnsafeDatabaseError, match='maintenance'):
+        connect()
+    assert not (isolated_home / 'db.sqlite').exists()
+
+
 def test_csbatched_job_not_submitted_on_network_database(isolated_home, monkeypatch):
     from cslurm.cli import csbatch
     monkeypatch.setattr(storage, 'filesystem_type', lambda _: 'nfs4')

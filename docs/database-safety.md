@@ -74,6 +74,10 @@ so previously sent messages are not sent again.
 
 Before installing a validated replacement, recheck that no database clients
 are open and that the original database and journal hashes have not changed.
+An existing `CSLURM_ROOT/.database-maintenance` file or directory blocks new
+database connections; create this marker before the final quiescence check and
+move it into the backup directory only after validating the installed database.
+This does not interrupt already-open connections: those must finish first.
 Move the original files into the backup directory rather than deleting them.
 Verify integrity and real job details through a read-only `cweb` instance
 before re-enabling write operations. Keep a recovery report with copied,
