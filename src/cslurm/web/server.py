@@ -81,6 +81,22 @@ class Handler(BaseHTTPRequestHandler):
         manager = self.server.remotes
         manager.read_only = self.server.operations.read_only
         manager.demo = self.server.operations.demo
+        if path in {'/api/servers/ssh', '/api/servers/discover'}:
+            from cslurm.web.discovery import ssh_aliases, discover
+            if manager.demo:
+                raise PermissionError('Demo console: SSH discovery disabled')
+            if path.endswith('/ssh') and body is None:
+                self.send(200, ssh_aliases())
+            elif path.endswith('/discover') and body is not None:
+                if not manager.discovery_slots.acquire(blocking=False):
+                    raise BusyError('Environment detection is busy; wait before retrying')
+                try:
+                    self.send(200, discover(body.get('alias')))
+                finally:
+                    manager.discovery_slots.release()
+            else:
+                raise ValueError('Unsupported discovery method')
+            return True
         if path == '/api/servers':
             self.send(200, manager.snapshot() if body is None else manager.action(body))
             return True

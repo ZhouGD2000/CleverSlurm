@@ -15,16 +15,53 @@ laptop's SSH config, start cweb on your laptop and open its local access link.
 
 1. First verify SSH from the **cweb host**: `ssh cluster`. Complete known-host
    verification and key/agent setup in your terminal, not the web page.
-2. Open **Manage servers** beside the workspace selector and add a display name
-   and SSH config alias, such as `cluster`.
-3. Set the remote Python executable that contains CleverSlurm. The default is
-   `python3`; for a conda or uv installation specify that environment's absolute
-   Python path. A non-interactive SSH shell may not activate the environment you
-   normally use in a terminal.
-4. Set the remote data directory (`~/.cslurm` by default). Keep **Read-only
+2. Open **Manage servers** beside the workspace selector. The SSH alias input
+   offers searchable candidates from the cweb account's `~/.ssh/config`. Select
+   an alias (such as `cluster`) and leave the field to start environment detection.
+   The adjacent refresh icon also explicitly detects the entered alias. Only the
+   selected server is contacted; opening the dialog does not probe all servers.
+3. Detection prefers a Python 3.10+ environment with CleverSlurm and its web module.
+   The environment selector lists the discovered interpreters; selecting one fills
+   its Python path. Package version and location are shown below it. An empty
+   display name is filled with the SSH alias. Expand **Advanced settings** to
+   override the interpreter, data directory or new-install destination manually.
+4. Check the remote data directory (`~/.cslurm` by default). Keep **Read-only
    connection** selected for browsing, or explicitly clear it to enable the
    existing non-cancellation operations.
 5. Save, click **Connect**, then **View**. Use the selector to return to local mode.
+
+### Discovery boundaries
+
+Alias enumeration supports `Include`, multiple aliases per `Host`, and duplicate
+removal. Wildcard and negated Host patterns are not selectable endpoints. Listing
+does not evaluate `Match exec`, run `ProxyCommand`, resolve DNS, or read private
+keys. Includes are enumerated conservatively even inside conditional blocks;
+an offered alias may therefore be unusable in the current SSH context. The SSH
+client, not this parser, applies effective connection settings. File/depth/size
+limits and unreadable configuration are reported as partial results. Manual
+aliases remain supported.
+
+Detection searches PATH Python executables, the interpreter beside or in the
+shebang of `cweb`/`cjobs`/`csbatch`, common home-directory Conda installations and
+their environments, `~/.conda/environments.txt`, common virtualenv locations, and
+the default CleverSlurm/uv tool environments. It checks at most 48 candidates,
+with a 3-second per-interpreter and 25-second probe budget (50-second SSH request
+budget including bootstrap). It does not recursively scan disks or source shell
+activation scripts. Unusual installation locations still require manual paths.
+
+The probe uses Python `-B`, module discovery and package metadata rather than
+importing CleverSlurm startup code. It does not open or initialize task databases,
+start trackers, synchronize Slurm, install packages or send notifications. Python
+startup hooks and the account's ordinary SSH shell configuration still apply.
+
+The detected data root comes from `CSLURM_ROOT` in the SSH environment or the
+explicitly labeled `~/.cslurm` default. It is not inferred from the source checkout.
+Existing or manually edited data roots are preserved. Selecting a different
+interpreter is explicit; multiple Python versions/environments remain separate.
+Detection failures, unsupported Python, and missing packages are distinct; a
+failed or incomplete probe never proves that CleverSlurm is absent everywhere.
+Connecting afterwards performs the actual web-API compatibility check. No
+installation or upgrade is triggered by discovery.
 
 The client uses `BatchMode=yes`, `StrictHostKeyChecking=yes`, no agent forwarding
 and no inherited port forwards. Existing SSH configuration (including supported

@@ -8,8 +8,10 @@ The packaged HTML, JavaScript, CSS, and Lucide icons are served locally.
 The default workspace remains the host running `cweb`. The top-bar selector also
 supports SSH servers using that host's existing SSH configuration. Add/connect
 servers through the adjacent management button, then switch between local and
-remote tasks, logs and settings. Uninstalled environments support an explicitly
-confirmed, non-overwriting installation. See [SSH workspaces](multi-server.md)
+remote tasks, logs and settings. The alias input offers existing SSH-config hosts;
+selecting one detects remote Python environments and existing CleverSlurm installs.
+Manual paths remain available under Advanced settings. Uninstalled environments
+support an explicitly confirmed, non-overwriting installation. See [SSH workspaces](multi-server.md)
 for interpreter selection, installation prerequisites and safety boundaries.
 
 The partition filter is a multi-select checkbox list of individual partitions.

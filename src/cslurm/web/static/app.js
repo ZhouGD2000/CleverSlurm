@@ -88,7 +88,7 @@ function auth(message = "") {
   $("auth-error").textContent = message;
 }
 async function api(path, body) {
-  const management = path === '/api/servers';
+  const management = path === '/api/servers' || path.startsWith('/api/servers/');
   const workspace = management ? 'local' : state.workspace;
   const version = state.workspaceVersion;
   if (body && !management) state.mutations++;

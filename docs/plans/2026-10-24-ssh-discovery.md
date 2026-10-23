@@ -41,3 +41,18 @@ JavaScript UI, pytest and Playwright.
 - Never overwrite edited/saved settings silently; manual root overrides remain.
 - Existing local mode, SSH host-key verification and explicit install confirmation
   remain unchanged. Credentials and private-key contents are never returned.
+
+## Verification
+
+- Added config/Include, discovery, failed candidates, distinct Python versions,
+  non-importing probes, response limits, authentication, demo and concurrency tests.
+- Full suite: 375 passed, 20 environment/opt-in skips.
+- Playwright: alias selection, auto-fill, manual-root preservation, stale-response
+  rejection, saving, remote/local switching, read-only gates, isolated offline
+  installation and desktop/mobile layouts passed.
+- Real-host read-only check: detected an existing Python 3.12.7 / CleverSlurm
+  0.1.0 environment and browsed 5,528 tasks; local mode remained available.
+  No remote install, configuration save, task synchronization or notification
+  dispatch was performed.
+- Before/after tracked-source and configuration hashes matched; notification
+  counts were unchanged and the read-only SQLite quick check returned `ok`.

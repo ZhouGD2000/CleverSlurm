@@ -13,6 +13,10 @@ from conftest import write_executable
 
 @pytest.mark.skipif(os.environ.get('CSLURM_BROWSER_TEST') != '1', reason='opt-in Playwright verification')
 def test_remote_browser_workflows(server, web_db, fake_bin, tmp_path):
+    ssh_config = Path.home() / '.ssh'
+    ssh_config.mkdir()
+    (ssh_config / 'config').write_text('Host cluster\nHost missing\nHost *\n')
+    (fake_bin / 'python3').symlink_to(sys.executable)
     remote = tmp_path / 'remote-data'
     environment = {**os.environ, 'CSLURM_ROOT': str(remote)}
     subprocess.run([sys.executable, '-c', 'from cslurm.db import connect,init_db\n'
@@ -22,7 +26,7 @@ def test_remote_browser_workflows(server, web_db, fake_bin, tmp_path):
                      'import os,shlex,sys\na=shlex.split(sys.argv[-1]); a.pop(0)\n'
                      f'if sys.argv[-2]=="missing" and a[0]=={sys.executable!r}:\n'
                      ' os.environ.pop("PYTHONPATH",None); a.insert(1,"-S")\n'
-                     f'elif a[0]!={sys.executable!r}: os.environ.pop("PYTHONPATH",None)\n'
+                     f'elif a[0] not in ({sys.executable!r},"/bin/sh"): os.environ.pop("PYTHONPATH",None)\n'
                      'os.execv(a[0],a)\n')
     env = {**os.environ, 'CSLURM_TEST_URL': f'http://127.0.0.1:{server.server_port}/#token={server.token}',
            'CSLURM_TEST_PYTHON': sys.executable, 'CSLURM_TEST_REMOTE': str(remote),

@@ -120,10 +120,14 @@ def ssh_command(profile, source, options=None):
     command = 'exec ' + executable + ' -u -c ' + shlex.quote(source)
     if options is not None:
         command += ' ' + shlex.quote(json.dumps(options, ensure_ascii=True))
+    return ssh_transport(profile['alias'], command)
+
+
+def ssh_transport(alias, command):
     return ['ssh', '-T', '-o', 'BatchMode=yes', '-o', 'StrictHostKeyChecking=yes',
             '-o', 'ForwardAgent=no', '-o', 'ClearAllForwardings=yes',
             '-o', 'ConnectTimeout=10', '-o', 'ServerAliveInterval=15',
-            '-o', 'ServerAliveCountMax=2', '--', profile['alias'], command]
+            '-o', 'ServerAliveCountMax=2', '--', alias, command]
 
 
 def allowed_path(path):
@@ -223,6 +227,7 @@ class RemoteManager:
         self.lock = threading.RLock()
         self.bridges, self.states = {}, {}
         self.installing = set()
+        self.discovery_slots = threading.BoundedSemaphore(2)
 
     def snapshot(self):
         snapshot = self.registry.snapshot()

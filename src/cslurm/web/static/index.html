@@ -317,10 +317,19 @@
         <input id="server-id" type="hidden" />
         <fieldset id="server-fields" class="server-fields">
           <label>名称<input id="server-name" maxlength="80" required autocomplete="off" /></label>
-          <label>SSH 配置别名<input id="server-alias" maxlength="128" required autocomplete="off" placeholder="cluster" pattern="[A-Za-z0-9][A-Za-z0-9_.-]*" /></label>
-          <label>远端 Python<input id="server-python" required value="python3" autocomplete="off" /></label>
-          <label>远端数据目录<input id="server-root" required value="~/.cslurm" autocomplete="off" /></label>
-          <label class="server-full">新安装目录<input id="server-install-dir" required value="~/.local/share/cleverslurm" autocomplete="off" /></label>
+          <label>SSH 配置别名<span class="server-alias-control"><input id="server-alias" list="server-ssh-options" maxlength="128" required autocomplete="off" placeholder="cluster" pattern="[A-Za-z0-9][A-Za-z0-9_.-]*" /><button id="server-detect" type="button" class="icon-button" title="检测远端环境" aria-label="检测远端环境"><img src="/icons/refresh-cw.svg" alt="" /></button></span></label>
+          <datalist id="server-ssh-options"></datalist>
+          <small id="server-ssh-source" class="server-full"></small>
+          <label id="server-environment-label" class="server-full" hidden>检测到的环境<select id="server-environment"></select></label>
+          <div id="server-detection" class="server-full server-detection" role="status" hidden></div>
+          <details id="server-advanced" class="server-full">
+            <summary>高级设置</summary>
+            <div class="server-fields">
+              <label>远端 Python<input id="server-python" required value="python3" autocomplete="off" /></label>
+              <label>远端数据目录<input id="server-root" required value="~/.cslurm" autocomplete="off" /></label>
+              <label class="server-full">新安装目录<input id="server-install-dir" required value="~/.local/share/cleverslurm" autocomplete="off" /></label>
+            </div>
+          </details>
           <label class="server-check server-full"><input id="server-read-only" type="checkbox" checked />只读连接</label>
         </fieldset>
         <div class="dialog-actions"><button id="server-save" class="primary" type="submit"><img src="/icons/save.svg" alt="" />保存服务器</button></div>

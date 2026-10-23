@@ -1468,6 +1468,13 @@ dialog input,
 .server-fields label { display: grid; gap: 6px; min-width: 0; font-size: 13px; }
 .server-fields input:not([type=checkbox]) { width: 100%; min-width: 0; }
 .server-full { grid-column: 1 / -1; }
+.server-alias-control { display: flex; gap: 6px; min-width: 0; }
+.server-alias-control input { flex: 1; }
+.server-alias-control button { flex-shrink: 0; }
+#server-environment { width: 100%; min-width: 0; max-width: 100%; font-size: 12px; }
+#server-advanced summary { cursor: pointer; padding: 8px 0; font-size: 13px; }
+.server-detection, #server-ssh-source { font-size: 12px; overflow-wrap: anywhere; white-space: pre-line; }
+.server-detection { color: #326455; }
 .server-fields .server-check { display: flex; align-items: center; }
 .server-install-panel { border-top: 1px solid #dce2df; margin-top: 16px; padding-top: 12px; }
 #server-install-target { overflow-wrap: anywhere; }
