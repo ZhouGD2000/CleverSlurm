@@ -15,6 +15,7 @@ const state = {
   loading: false,
   reloadPending: false,
   detailVersion: 0,
+  partitions: new Set(),
 };
 const fromLink = new URLSearchParams(location.hash.slice(1)).get("token");
 if (fromLink) {
@@ -121,6 +122,27 @@ function setBusy(busy) {
   for (const button of document.querySelectorAll("[data-operation]"))
     button.disabled = disabled || button.dataset.blocked === "true";
 }
+function renderPartitions() {
+  const options = $("partition-options");
+  const names = [...new Set([...(state.overview?.partitions || []), ...state.partitions])].sort();
+  const key = JSON.stringify(names);
+  if (options.dataset.options !== key) {
+    options.dataset.options = key;
+    options.replaceChildren(...["", ...names].map((name) => {
+      const label = el("label", "partition-option");
+      const checkbox = document.createElement("input");
+      checkbox.type = "checkbox";
+      checkbox.value = name;
+      label.append(checkbox, el("span", "", name || "全部分区"));
+      return label;
+    }));
+  }
+  for (const input of options.querySelectorAll("input"))
+    input.checked = input.value ? state.partitions.has(input.value) : state.partitions.size === 0;
+  $("partition-caption").textContent = state.partitions.size === 0
+    ? "全部分区" : state.partitions.size === 1 ? [...state.partitions][0] : `分区 (${state.partitions.size})`;
+  $("partition-button").title = [...state.partitions].join(", ") || "全部分区";
+}
 async function load() {
   if (!state.token) return;
   if (state.loading) {
@@ -132,7 +154,7 @@ async function load() {
     const query = new URLSearchParams({
       search: $("search").value.trim(),
       state: $("state").value,
-      partition: $("partition").value,
+      partition: [...state.partitions].join(","),
       offset: state.offset,
       limit: state.limit,
     });
@@ -193,12 +215,7 @@ async function load() {
         ? "只读模式 · 所有网页操作已禁用"
         : "";
     show($("notice"), !!$("notice").textContent);
-    const selectedPartition = $("partition").value;
-    $("partition").replaceChildren(
-      new Option("全部分区", ""),
-      ...overview.partitions.map((p) => new Option(p, p)),
-    );
-    $("partition").value = selectedPartition;
+    renderPartitions();
     if (state.offset && !result.items.length && result.total <= state.offset) {
       state.offset = 0;
       state.loading = false;
@@ -645,13 +662,30 @@ $("search").addEventListener("input", () => {
   }, 300);
 });
 $("state").addEventListener("change", () => filter($("state").value || "all"));
-$("partition").addEventListener("change", () => {
+$("partition-options").addEventListener("change", (event) => {
+  const input = event.target;
+  if (!input.matches('input[type="checkbox"]')) return;
+  if (!input.value) state.partitions.clear();
+  else if (input.checked) state.partitions.add(input.value);
+  else state.partitions.delete(input.value);
+  renderPartitions();
   state.offset = 0;
   load();
 });
+document.addEventListener("click", (event) => {
+  if (!$("partition").contains(event.target)) $("partition").open = false;
+});
+$("partition").addEventListener("keydown", (event) => {
+  if (event.key === "Escape") {
+    event.preventDefault();
+    $("partition").open = false;
+    $("partition-button").focus();
+  }
+});
 $("clear-filters").addEventListener("click", () => {
   $("search").value = "";
-  $("partition").value = "";
+  state.partitions.clear();
+  renderPartitions();
   filter("all");
 });
 $("page-size").addEventListener("change", () => {

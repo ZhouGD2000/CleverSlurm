@@ -96,6 +96,30 @@ def test_server_assets_auth_validation_and_unknown_routes(server):
     assert request(server, "/api/operations", body=[])[0] == 400
 
 
+def test_partition_checkboxes_match_individual_names_and_union(server):
+    with connect() as conn:
+        conn.executemany("insert into jobs (job_id,partition,state) values (?,?,'RUNNING')", [
+            ('103', 'cpu, gpu'), ('104', 'cpu2'), ('105', None),
+            ('106', 'gpu,cpu,cpu'), ('107', ' , '), ('108', 'cpu_%'),
+        ])
+    assert request(server, '/api/overview')[1]['partitions'] == ['cpu', 'cpu2', 'cpu_%', 'gpu']
+    def ids(query):
+        code, result = request(server, '/api/jobs?' + query)
+        assert code == 200
+        return {job['job_id'] for job in result['items']}, result['total']
+    assert ids('partition=cpu')[0] == {'100', '102', '103', '106'}
+    assert ids('partition=cpu2')[0] == {'104'}
+    assert ids('partition=cpu,gpu')[0] == {'100', '101', '102', '103', '106'}
+    assert ids('partition=cpu,cpu')[1] == 4
+    assert ids('partition=cpu,gpu&state=COMPLETED')[0] == {'101'}
+    assert ids('partition=cpu,gpu&limit=1')[1] == 5
+    assert ids('partition=cpu_%25')[0] == {'108'}
+    assert ids('partition=unknown')[1] == 0
+    assert ids('partition=')[1] == 9
+    assert ids('partition=,%20,')[1] == 9
+    assert ids('partition=%27%20OR%201=1--')[1] == 0
+
+
 def test_read_only_and_demo_reject_operations(web_db):
     for operations in [Operations(read_only=True, allow_cancel=True), Operations(demo=True, allow_cancel=True)]:
         for action in ["refresh", "ask", "summarize", "cancel"]:

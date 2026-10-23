@@ -16,6 +16,10 @@ FAILED_STATES = TERMINAL_STATES - {"COMPLETED", "CANCELLED"}
 MAX_LOG_BYTES = 128 * 1024
 
 
+def partition_names(value):
+    return {name.strip() for name in (value or "").split(",") if name.strip()}
+
+
 @contextmanager
 def reader():
     # GET requests never migrate the schema or change SQLite's journal mode.
@@ -23,6 +27,9 @@ def reader():
     conn = sqlite3.connect(db_path().resolve().as_uri() + "?mode=ro", uri=True, timeout=3)
     conn.row_factory = sqlite3.Row
     conn.create_function("normalized_state", 1, normalize_state, deterministic=True)
+    conn.create_function("partition_matches", 2,
+                         lambda actual, selected: bool(partition_names(actual) & partition_names(selected)),
+                         deterministic=True)
     try:
         yield conn
     finally:
@@ -75,8 +82,8 @@ def list_jobs(*, search="", state="", partition="", limit=25, offset=0):
         states = sorted(ACTIVE_STATES) if state == "active" else sorted(FAILED_STATES) if state == "failed" else [state]
         conditions.append("normalized_state(state) in (" + ",".join("?" for _ in states) + ")")
         values.extend(states)
-    if partition:
-        conditions.append("partition = ?")
+    if partition_names(partition):
+        conditions.append("partition_matches(partition, ?)")
         values.append(partition)
     where = " where " + " and ".join(conditions) if conditions else ""
     with reader() as conn:
@@ -95,7 +102,8 @@ def overview():
         for row in conn.execute("select state, count(*) as n from jobs group by state"):
             state = normalize_state(row["state"])
             counts[state] = counts.get(state, 0) + row["n"]
-        partitions = [row[0] for row in conn.execute("select distinct partition from jobs where partition is not null and partition != '' order by partition")]
+        partitions = sorted({name for row in conn.execute("select distinct partition from jobs")
+                             for name in partition_names(row[0])})
         updated_at = conn.execute("select max(updated_at) from jobs").fetchone()[0]
     return {
         "total": sum(counts.values()), "active": sum(counts.get(s, 0) for s in ACTIVE_STATES),

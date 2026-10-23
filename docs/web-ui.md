@@ -5,6 +5,13 @@ single-user tool running as your Unix account, not a public or multi-user web
 service. No Node.js, frontend build, web framework, or CDN is needed at runtime.
 The packaged HTML, JavaScript, CSS, and Lucide icons are served locally.
 
+The partition filter is a multi-select checkbox list of individual partitions.
+For example, a recorded `CPU,CPU2` job matches either `CPU` or `CPU2`.
+Multiple selections use OR matching with exact partition names (`CPU` does not
+match `CPU2`). Selecting "All partitions" or clearing all checks removes the
+partition restriction, including jobs without a recorded partition. Filtering
+does not change the job's original partition value.
+
 ## Install and start
 
 Use the same environment as your other CleverSlurm commands:

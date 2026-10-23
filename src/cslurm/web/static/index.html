@@ -130,9 +130,10 @@
                   <option value="failed">异常退出</option>
                   <option value="CANCELLED">CANCELLED</option>
                   <option value="UNKNOWN">UNKNOWN</option></select
-                ><select id="partition" aria-label="按分区筛选">
-                  <option value="">全部分区</option></select
-                ><button
+                ><details id="partition" class="partition-filter">
+                  <summary id="partition-button" aria-label="按分区筛选"><span id="partition-caption">全部分区</span></summary>
+                  <div id="partition-options" class="partition-options" role="group" aria-label="分区选项"></div>
+                </details><button
                   type="button"
                   class="icon-button"
                   id="reload"
