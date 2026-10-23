@@ -1,6 +1,7 @@
 import sqlite3
 import subprocess
 import sys
+import json
 
 from conftest import write_executable
 
@@ -30,12 +31,12 @@ def test_csrun_records_standalone_fake_srun_execution(isolated_home, fake_bin, t
     assert job[1] == "csrun python script.py"
     assert job[2] == "COMPLETED"
     assert job[3] == str(tmp_path)
-    assert event[0] == "COMPLETED"
+    assert event[0] == "SRUN_FINISHED"
     assert event[1] == "srun python script.py"
-    assert event[2].startswith("ran python script.py\n")
+    assert json.loads(event[2])["stdout"] == "ran python script.py\n"
 
 
-def test_csrun_records_through_write_transaction(isolated_home, fake_bin, tmp_path, monkeypatch):
+def test_csrun_retains_receipt_when_database_unavailable(isolated_home, fake_bin, tmp_path, monkeypatch):
     write_executable(
         fake_bin / "srun",
         "#!/bin/sh\nprintf 'ran\\n'\n",
@@ -44,23 +45,13 @@ def test_csrun_records_through_write_transaction(isolated_home, fake_bin, tmp_pa
 
     import cslurm.cli.csrun as csrun
 
-    original = csrun.run_write_transaction
-    calls = 0
-
-    def tracking(write):
-        nonlocal calls
-        calls += 1
-        return original(write)
-
-    monkeypatch.setattr(csrun, "run_write_transaction", tracking)
-
-    csrun.run_job(["python", "script.py"])
-
-    with sqlite3.connect(isolated_home / "db.sqlite") as conn:
-        count = conn.execute("select count(*) from jobs").fetchone()[0]
-
-    assert calls == 1
-    assert count == 1
+    def fail(*args):
+        raise OSError("database unavailable")
+    monkeypatch.setattr("cslurm.db.connect", fail)
+    result = csrun.run_job(["python", "script.py"])
+    assert result.returncode == 0
+    assert not (isolated_home / "db.sqlite").exists()
+    assert len(list((isolated_home / "spool/csrun").glob("*.json"))) == 1
 
 
 def test_csrun_module_entrypoint_forwards_output_and_exit_code(isolated_home, fake_bin):

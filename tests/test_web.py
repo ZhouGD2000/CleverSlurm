@@ -260,8 +260,11 @@ def test_confirmed_cancel_only_passes_single_job_to_fake_slurm(web_db, fake_bin,
     result = wait_operation(operations, op)
     assert result["status"] == "succeeded", result
     assert capture.read_text().splitlines() == ["100"]
+    from cslurm.runtime.receipts import ingest_commands
+    ingest_commands()
     with data.reader() as conn:
         assert conn.execute("select event_type from job_events where job_id='100'").fetchone()[0] == "CANCEL_REQUESTED"
+        assert conn.execute("select note from job_events where job_id='100'").fetchone()[0] == "Confirmed single-job cancellation from cweb"
 
 
 def test_refresh_uses_fake_sacct_and_is_nonblocking(web_db, fake_bin, monkeypatch):

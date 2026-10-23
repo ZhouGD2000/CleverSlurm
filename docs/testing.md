@@ -72,7 +72,7 @@ The tests cover:
 - fake `srun` execution through `csrun`
 - `csrun` CLI stdout/stderr and exit-code forwarding
 - fake `scancel` event recording
-- scancel option passthrough with CleverSlurm-only `--note`
+- unchanged scancel arguments, interactive prompts, and optional `CSLURM_CANCEL_NOTE`
 - fake `sacct` tracker updates, including no-header `sacct -n` output
 - optional runtime `commands.log` ingestion
 - `cjobs` details, events, files, commands, and logs

@@ -25,14 +25,19 @@ Connections are closed on leaving their context. Busy-timeout and short-write
 transaction retries remain enabled. The program no longer forces WAL or
 changes journal modes while other clients might be running.
 
-Within an allocation, `csrun` writes a uniquely named JSON record under
-`CSLURM_ROOT/spool/csrun/`, without opening SQLite. It does the same on a
-network filesystem outside an allocation. Records are flushed before atomic
-publication. `ctrack` imports them on the management host and moves them to
-`spool/csrun/ingested/` after committing. Replaying the same record does not
+The `csrun` and `cscancel` CLIs write uniquely named JSON receipts under
+`CSLURM_ROOT/spool/csrun/` and `spool/scancel/`, without opening SQLite, whether
+inside or outside an allocation. Records are flushed before atomic publication.
+Workers and `ctrack` import them on the management host and move them to each
+spool's `ingested/` directory after committing. Inside an allocation, `csrun`
+does not start a worker on the compute node. Replaying the same receipt does not
 duplicate its event. An individual step's exit status does not replace batch
 metadata or mark the entire allocation as completed. Slurm accounting remains
 the authority for the allocation's state.
+
+Python API helpers attempt immediate ingestion by default; failure preserves
+the receipt and the native result. `defer=True` selects the asynchronous path.
+See [command compatibility](srun-scancel-compatibility.md) for audit semantics.
 
 ## Existing WAL databases
 

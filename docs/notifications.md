@@ -41,7 +41,7 @@ ctrack
 
 Hard failure states are `FAILED`, `OUT_OF_MEMORY`, `TIMEOUT`, `NODE_FAIL`, `BOOT_FAIL`, `DEADLINE`, `REVOKED`, and `SPECIAL_EXIT`. Nonzero `ExitCode` or `DerivedExitCode` is also treated as a hard failure.
 
-`CANCELLED` with a prior `cscancel --note ...` or other cancellation event is recorded as user cancellation and assigned digest mode.
+`CANCELLED` with a prior explicit cancellation event (optionally annotated using `CSLURM_CANCEL_NOTE`) is recorded as user cancellation and assigned digest mode. Signal-only or ambiguous/filter requests are not guessed into per-job cancellation events; Slurm accounting remains authoritative.
 
 ## Success Criteria
 

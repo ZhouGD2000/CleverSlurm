@@ -31,6 +31,23 @@ a non-excluded job. It does not resubmit or cancel the Slurm job. Existing queue
 work reads current configuration when executed; in-flight requests keep their
 existing settings. Workers write diagnostic process output to `workers.log`.
 
+## Command receipts
+
+`csrun` and `cscancel` publish completion/request receipts without accessing SQLite
+in the CLI. `cwork run` and `ctrack` import pending `spool/csrun/*.json` and
+`spool/scancel/*.json`. Successful imports are retained in `ingested/`; malformed
+records are retained in `invalid/` without blocking valid records. Replaying the
+same receipt does not duplicate events. Importing never executes a recorded
+command or retries cancellation, and does not itself enqueue AI or notifications.
+For a step within an allocation, run the tracker on the management host; the
+compute-side wrapper does not launch a database worker.
+
+A direct successful whole-job cancellation request produces `CANCEL_REQUESTED`;
+signal/step requests produce `SIGNAL_REQUESTED`. Ambiguous requests use a global
+`SCANCEL_REQUESTED` event; native nonzero results use `SCANCEL_FAILED` (partial
+success is possible). These events never change the job's state. See
+[compatibility and audit limits](srun-scancel-compatibility.md).
+
 ## Notification safety
 
 Notification claims and final status writes use short transactions. HTTP sends

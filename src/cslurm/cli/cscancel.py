@@ -1,83 +1,50 @@
+"""Native scancel invocation; audit is best-effort and never retries cancellation."""
+
 import os
-import re
+import sys
 from datetime import datetime, timezone
 
-from cslurm.db import run_write_transaction
-from cslurm.slurm.commands import run_slurm_command
+from cslurm.slurm import native
+from cslurm.slurm.cancel_options import audit
+from cslurm.slurm.sbatch_options import command_text
 
 
-def _now() -> str:
-    return datetime.now(timezone.utc).isoformat()
-
-
-def _extract_note(argv: list[str]) -> tuple[list[str], str | None]:
-    passthrough = []
-    note = None
-    index = 0
-    while index < len(argv):
-        value = argv[index]
-        if value == "--note":
-            if index + 1 >= len(argv):
-                raise SystemExit("cscancel --note requires an argument")
-            note = argv[index + 1]
-            index += 2
-            continue
-        if value.startswith("--note="):
-            note = value.split("=", 1)[1]
-            index += 1
-            continue
-        passthrough.append(value)
-        index += 1
-    return passthrough, note
-
-
-def _infer_job_id(argv: list[str]) -> str | None:
-    for value in argv:
-        if re.match(r"^\d+(?:[_\.][\w-]+)?$", value):
-            return value
-    return None
-
-
-def cancel_job(argv: list[str]):
-    passthrough, note = _extract_note(argv)
-    if not passthrough:
-        raise SystemExit("usage: cscancel [scancel-options] job_id [--note NOTE]")
-
-    result = run_slurm_command("scancel", passthrough)
-    if result.returncode != 0:
-        raise RuntimeError(result.stderr or result.stdout)
-
-    job_id = _infer_job_id(passthrough)
-    command = "scancel " + " ".join(passthrough)
-
-    def record(conn):
-        conn.execute(
-            """
-            insert into job_events (job_id, event_time, event_type, command, cwd, note, raw_output)
-            values (?, ?, ?, ?, ?, ?, ?)
-            """,
-            (
-                job_id,
-                _now(),
-                "CANCEL_REQUESTED",
-                command,
-                os.getcwd(),
-                note,
-                result.stdout + result.stderr,
-            ),
-        )
-
-    run_write_transaction(record)
+def cancel_job(argv: list[str], *, note: str | None = None, capture_output: bool = True, defer: bool = False):
+    timestamp = datetime.now(timezone.utc).isoformat()
+    result = native.run("scancel", argv, capture_output=capture_output)
+    try:
+        from cslurm.runtime.cancellation import publish, ingest
+        from cslurm.db import connect, init_db
+        metadata = audit(argv, os.environ)
+        if metadata.get("informational"):
+            return result
+        path = publish({
+            "time": timestamp, "cwd": os.getcwd(), "command": command_text("scancel", argv),
+            "argv": argv, "audit": metadata, "returncode": result.returncode,
+            "note": note if note is not None else os.environ.get("CSLURM_CANCEL_NOTE"),
+            "stdout": result.stdout or "", "stderr": result.stderr or "",
+        })
+        if defer:
+            from cslurm.work import wake
+            wake()
+        else:
+            with connect() as conn:
+                init_db(conn)
+                ingest(conn, paths=[path])
+    except Exception:
+        pass
     return result
 
 
 def main() -> None:
-    result = cancel_job(os.sys.argv[1:])
-    if result.stdout:
-        print(result.stdout, end="")
-    if result.stderr:
-        print(result.stderr, end="", file=os.sys.stderr)
-    raise SystemExit(result.returncode)
+    try:
+        if os.environ.get("CSLURM_TRACK_COMMANDS", "true").lower() in {"false", "0", "off"}:
+            native.exec_native("scancel", sys.argv[1:])
+        result = cancel_job(sys.argv[1:], capture_output=False, defer=True)
+    except OSError as exc:
+        print(f"cscancel: {exc}", file=sys.stderr)
+        raise SystemExit(127 if isinstance(exc, FileNotFoundError) else 126)
+    native.exit_like_native(result.returncode)
 
 
 if __name__ == "__main__":

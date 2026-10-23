@@ -42,7 +42,7 @@ store/sha256/
 config.toml
 ```
 
-SQLite write contention can happen when many `csbatch`, `csrun`, `ctrack`, and background workers write the same database at once. CleverSlurm enables WAL mode and waits for locked databases by default. Tune the waits if very large submission bursts still hit `database is locked`:
+SQLite write contention can happen when trackers and background workers write the same database at once. New databases use rollback journaling (`DELETE`), not WAL. The `csbatch`, `csrun`, and `cscancel` CLIs publish receipts without waiting for database locks. Tune database waits for other writers if large bursts still hit `database is locked`; see [database safety](database-safety.md):
 
 ```bash
 export CSLURM_DB_BUSY_TIMEOUT_MS=60000

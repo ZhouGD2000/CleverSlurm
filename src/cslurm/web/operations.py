@@ -69,7 +69,7 @@ class Operations:
                 raise ValueError("Type the exact job ID to confirm cancellation")
             if job["state"] not in ACTIVE_STATES:
                 raise ValueError("Only a known active job can be cancelled; refresh its state first")
-            args = ["cslurm.cli.cscancel", job_id, "--note", "Confirmed single-job cancellation from cweb"]
+            args = ["cslurm.cli.cscancel", job_id]
         elif action == "refresh":
             args = ["cslurm.cli.ctrack"]
         elif action == "summarize":
@@ -141,9 +141,14 @@ class Operations:
                 with self.lock:
                     if self.stopping:
                         raise BusyError("The web server is stopping")
+                    env = None
+                    if args[0] == "cslurm.cli.cscancel":
+                        env = os.environ.copy()
+                        env["CSLURM_CANCEL_NOTE"] = "Confirmed single-job cancellation from cweb"
                     process = subprocess.Popen(
                         [sys.executable, "-m", *args], stdout=output, stderr=output,
                         stdin=input_file if stdin_body is not None else subprocess.DEVNULL, start_new_session=True,
+                        env=env,
                     )
                     self.process = process
                 try:

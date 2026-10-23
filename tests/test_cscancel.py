@@ -21,7 +21,7 @@ def test_cscancel_calls_fake_scancel_and_records_note(isolated_home, fake_bin):
             "values ('123456', 't', '/tmp', 'csbatch job.slurm', 'RUNNING', 't', 't')"
         )
 
-    cancel_job(["123456", "--note", "Wrong parameter U"])
+    cancel_job(["123456"], note="Wrong parameter U")
 
     with sqlite3.connect(isolated_home / "db.sqlite") as conn:
         event = conn.execute(
@@ -36,7 +36,7 @@ def test_cscancel_calls_fake_scancel_and_records_note(isolated_home, fake_bin):
     )
 
 
-def test_cscancel_passes_scancel_options_and_removes_note(isolated_home, fake_bin, tmp_path):
+def test_cscancel_passes_scancel_options_and_records_external_note(isolated_home, fake_bin, tmp_path):
     from cslurm.cli.cscancel import cancel_job
 
     calls = tmp_path / "scancel.calls"
@@ -45,18 +45,18 @@ def test_cscancel_passes_scancel_options_and_removes_note(isolated_home, fake_bi
         f"#!/bin/sh\nprintf '%s\\n' \"$@\" > {calls}\nprintf 'sent signal\\n'\n",
     )
 
-    result = cancel_job(["--signal=TERM", "123456", "--note=manual stop"])
+    result = cancel_job(["--signal=TERM", "123456"], note="manual stop")
 
     assert result.returncode == 0
     assert calls.read_text().splitlines() == ["--signal=TERM", "123456"]
     with sqlite3.connect(isolated_home / "db.sqlite") as conn:
         event = conn.execute(
-            "select job_id, event_type, command, note, raw_output from job_events"
+            "select job_id, event_type, command, note, raw_output from job_events where job_id='123456'"
         ).fetchone()
 
     assert event == (
         "123456",
-        "CANCEL_REQUESTED",
+        "SIGNAL_REQUESTED",
         "scancel --signal=TERM 123456",
         "manual stop",
         "sent signal\n",

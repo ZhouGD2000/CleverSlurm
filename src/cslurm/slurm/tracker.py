@@ -5,6 +5,7 @@ from cslurm.db import connect, init_db
 from cslurm.notify.feishu import dispatch_pending
 from cslurm.runtime.ingest import ingest_runtime_commands, ingest_runtime_finish
 from cslurm.runtime.spool import ingest as ingest_srun_spool
+from cslurm.runtime.cancellation import ingest as ingest_cancel_spool
 from cslurm.slurm.commands import run_slurm_command
 
 
@@ -91,6 +92,7 @@ def _track_once():
     with connect() as conn:
         init_db(conn)
         ingest_srun_spool(conn)
+        ingest_cancel_spool(conn)
         jobs = conn.execute(
             "select job_id,state from jobs where state is null or state not in (" +
             ",".join("?" for _ in TERMINAL_STATES) + ")", tuple(TERMINAL_STATES)).fetchall()

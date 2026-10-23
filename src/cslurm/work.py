@@ -67,6 +67,8 @@ def drain(*, limit=100, handler=None, lock_fd=None):
                 return 0
         from cslurm.slurm.submissions import ingest as ingest_submissions
         ingest_submissions()
+        from cslurm.runtime.receipts import ingest_commands
+        ingest_commands()
         def recover(conn):
             conn.execute("update work_items set status=case when attempts >= 5 then 'failed' else 'pending' end, "
                          "updated_at=?, last_error='Worker interrupted' where status='running'", (now(),))

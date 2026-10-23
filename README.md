@@ -7,8 +7,8 @@ The design rule is simple: deterministic code records facts; AI only summarizes 
 ## Current Features
 
 - `csbatch`: invokes native `sbatch` with unchanged arguments and scripts, forwards native output and exit status, and publishes submission receipts for background tracking. No forced `--parsable`, script replacement, or runtime trap. See [sbatch compatibility](docs/sbatch-compatibility.md).
-- `csrun`: wraps direct `srun` execution, passes stdout/stderr through in CLI mode, and records a standalone local job record when outside an existing allocation.
-- `cscancel`: wraps `scancel`, passes through scancel options, and records a cancellation request event with an optional CleverSlurm-only `--note`.
+- `csrun`: delegates unchanged arguments and terminal streams to `srun`, then publishes a completion receipt without waiting for SQLite.
+- `cscancel`: delegates unchanged arguments and terminal streams to `scancel`, then publishes a conservative request audit. Optional notes use `CSLURM_CANCEL_NOTE`.
 - `ctrack`: polls `sacct` for known jobs and updates state, exit code, derived exit code, elapsed time, memory, and node list.
 - `cjobs`: queries sacct-like recent history, squeue-like active queues, job details, events, files, recorded commands, log tails, and AI answers over recent job facts.
 - `cweb`: local web console for task history, filters, logs, files, summaries, events, notifications, AI model/Feishu configuration profiles, background tracking/AI operations, and explicitly enabled single-job cancellation.
@@ -379,9 +379,11 @@ always uses a new directory and never replaces the live database. See
 
 `csbatch` delegates all argument validation and script execution to native Slurm. `--help`, `--version`, `--test-only`, quiet submissions, stdin, arrays, heterogeneous arguments, script arguments and `--wrap` are not rewritten. A failing `--wait` job keeps its native exit code and is still tracked when an ID is observed. Tracking availability is not a prerequisite for submission. Quiet/unrecognized output and cluster-qualified IDs are retained as unresolved receipts rather than guessed into the local database. Terminal-sensitive plugins can use `CSLURM_TRACK_SUBMISSIONS=false csbatch ...` for direct native exec without tracking. See [compatibility and limitations](docs/sbatch-compatibility.md).
 
-`csrun` passes arguments to real `srun`. In CLI mode it lets the child process inherit stdout/stderr, so it behaves more like `srun` for normal terminal use. Interactive PTY-heavy workflows such as `srun --pty bash` should still be smoke-tested on the target cluster before relying on a rename.
+`csrun` passes every argument unchanged to real `srun`, including empty/invalid arguments for native validation. The CLI inherits stdin/stdout/stderr and inheritable file descriptors. Completion tracking is asynchronous; database locks and tracking errors do not change the native result. A step does not mark its parent allocation completed. Standalone executions receive local tracking IDs, not inferred Slurm IDs.
 
-`cscancel` passes arguments to real `scancel` after removing CleverSlurm's optional `--note`. If you rename it to `scancel`, broad scancel commands keep their normal Slurm meaning; use the same caution you would use with real `scancel`.
+`cscancel` passes every argument unchanged, including interactive, filter, array, step and signal options. CleverSlurm's former `--note` is no longer intercepted; use `CSLURM_CANCEL_NOTE="reason" cscancel JOB_ID` for an intentional cancellation. An audit records requests, not confirmed cancellation. If renamed to `scancel`, broad commands retain their normal Slurm meaning and risks. No cancellation is retried by the receipt importer.
+
+Both commands preserve native CLI output bytes and exit/signal status. Exact PID-sensitive or special terminal integrations can use `CSLURM_TRACK_COMMANDS=false csrun ...` (or `cscancel ...`) to exec native Slurm directly without tracking. See [srun/scancel compatibility and limits](docs/srun-scancel-compatibility.md).
 
 For new batch jobs, completion is recorded from Slurm accounting by `ctrack`; no `PROGRAM_FINISHED` trap is injected. Existing runtime markers from earlier versions remain readable. Static command detection is best-effort: it does not trace every file opened by the application or infer domain-specific output files. Notification analysis scans recorded stdout/stderr paths and falls back to Slurm's default `slurm-<job_id>.out` under the submit directory for older records without recorded paths. This upgrade does not enqueue historical completion work or replay old notifications.
 
