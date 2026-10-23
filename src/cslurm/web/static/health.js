@@ -90,7 +90,8 @@ $('compare-open').addEventListener('click', async () => {
   $('compare-dialog').showModal();
   $('compare-content').replaceChildren(el('p', '', '正在读取…'));
   try {
-    const {jobs} = await api('/api/compare?' + new URLSearchParams({ids: [...state.comparison].join(',')}));
+    const result = await api('/api/compare?' + new URLSearchParams({ids: [...state.comparison].join(',')}));
+    const jobs = result.jobs.map((job) => ({...job, effective_chdir: job.effective_chdir || job.submit_cwd}));
     const fields = [['job_name','名称'], ['state','状态'], ['exit_code','退出码'], ['partition','分区'],
       ['elapsed','耗时'], ['max_rss','最大内存'], ['alloc_cpus','CPU 数'], ['nodelist','节点'],
       ['submitted_at','提交时间'], ['effective_chdir','工作目录'], ['command','命令 / 参数'],
