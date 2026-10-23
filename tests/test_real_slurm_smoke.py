@@ -1,6 +1,7 @@
 import os
 import sqlite3
 import time
+import uuid
 from datetime import datetime, timezone
 from pathlib import Path
 
@@ -17,7 +18,7 @@ pytestmark = pytest.mark.real_slurm
 def _real_workdir() -> Path:
     base = Path(os.environ.get("CSLURM_REAL_SLURM_WORKDIR", "~/.cslurm-real-tests")).expanduser()
     stamp = datetime.now(timezone.utc).strftime("%Y%m%d-%H%M%S")
-    workdir = base / f"pytest-{stamp}-{os.getpid()}"
+    workdir = base / f"pytest-{stamp}-{os.getpid()}-{uuid.uuid4().hex[:8]}"
     workdir.mkdir(parents=True, exist_ok=False)
     return workdir
 

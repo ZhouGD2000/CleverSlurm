@@ -86,6 +86,8 @@ def accounting_row(rows: dict[str, dict[str, str]], job_id: str) -> dict[str, st
 
 def _track_once():
     from cslurm.work import enqueue, wake
+    from cslurm.slurm.submissions import ingest as ingest_submissions
+    ingest_submissions()
     with connect() as conn:
         init_db(conn)
         ingest_srun_spool(conn)

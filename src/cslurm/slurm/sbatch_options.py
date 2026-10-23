@@ -3,6 +3,7 @@ from pathlib import Path
 
 
 SBATCH_LONG_OPTIONS_WITH_ARG = {
+    "acctg-freq",
     "account",
     "array",
     "begin",
@@ -64,7 +65,7 @@ SBATCH_LONG_OPTIONS_WITH_ARG = {
     "wrap",
 }
 
-SBATCH_SHORT_OPTIONS_WITH_ARG = set("AacCDeEJLNnopqtuwx")
+SBATCH_SHORT_OPTIONS_WITH_ARG = set("AacCDdeEijJLMNnopqtuwx")
 
 
 def parse_cli_option(args: list[str], option: str, short_option: str | None = None) -> str | None:
@@ -99,6 +100,8 @@ def parse_script_option(script_text: str, option: str, short_option: str | None 
     value = None
     for line in script_text.splitlines():
         stripped = line.strip()
+        if stripped and not stripped.startswith("#"):
+            break
         if not stripped.startswith("#SBATCH"):
             continue
         body = stripped[len("#SBATCH") :].strip()

@@ -1,306 +1,179 @@
+"""sbatch passthrough with best-effort, out-of-band submission tracking."""
+
 import getpass
 import os
+import re
 import shutil
-import subprocess
 import sys
 from dataclasses import dataclass
 from datetime import datetime, timezone
 from pathlib import Path
 
-from cslurm.collect.git import collect_git_metadata
-from cslurm.collect.static_auto import record_static_analysis_failure, record_static_analysis_queued
-from cslurm.ai.auto import record_auto_summary_failure, record_auto_summary_queued
-from cslurm.config import ai_auto_summary_enabled, root_dir, static_analysis_enabled
-from cslurm.db import connect, run_write_transaction
-from cslurm.storage import require_local_database
-from cslurm.slurm.commands import run_slurm_command
+from cslurm.slurm import native_sbatch
 from cslurm.slurm.sbatch_options import (
-    SBATCH_LONG_OPTIONS_WITH_ARG,
-    SBATCH_SHORT_OPTIONS_WITH_ARG,
-    command_text,
-    metadata_value,
+    SBATCH_LONG_OPTIONS_WITH_ARG, SBATCH_SHORT_OPTIONS_WITH_ARG,
+    parse_cli_option, parse_script_option,
 )
 
 
 @dataclass(frozen=True)
-class ParsedSbatchInvocation:
-    passthrough_args: list[str]
-    script_args: list[str]
-    script_path: Path | None
-    wrap_command: str | None
-    user_parsable: bool
-
-
-@dataclass(frozen=True)
 class BatchSubmission:
-    job_id: str
-    user_parsable: bool
+    job_id: str | None
+    stdout: str
     stderr: str
+    returncode: int
 
 
-def _now() -> str:
-    return datetime.now(timezone.utc).isoformat()
-
-
-def _current_user() -> str | None:
-    return os.environ.get("USER") or os.environ.get("LOGNAME") or getpass.getuser()
-
-
-def _resolve_sbatch_path(path_text: str | None, script_dir: Path, job_id: str) -> str | None:
-    if not path_text:
-        return None
-    expanded = path_text.replace("%j", job_id).replace("%A", job_id)
-    path = Path(expanded).expanduser()
-    if not path.is_absolute():
-        path = script_dir / path
-    return str(path.resolve())
-
-
-def _default_slurm_output_path(script_dir: Path, job_id: str) -> str:
-    return str((script_dir / f"slurm-{job_id}.out").resolve())
-
-
-def _record_copied_file(conn, *, job_id: str, path: Path, relpath: str, role: str) -> None:
-    size = path.stat().st_size if path.exists() else None
-    conn.execute(
-        """
-        insert into job_files (job_id, path, relpath, size, role, source, copied, confidence)
-        values (?, ?, ?, ?, ?, ?, ?, ?)
-        """,
-        (job_id, str(path), relpath, size, role, "csbatch", 1, 1.0),
-    )
-
-
-def _shell_single_quote(value: str) -> str:
-    return "'" + value.replace("'", "'\"'\"'") + "'"
-
-
-def _parse_sbatch_invocation(argv: list[str]) -> ParsedSbatchInvocation:
-    passthrough: list[str] = []
-    user_parsable = False
+def _metadata_args(argv):
+    """Never validate execution here; unknown syntax only limits metadata."""
     index = 0
+    options = []
     while index < len(argv):
         value = argv[index]
         if value == "--":
-            if index + 1 >= len(argv):
-                raise SystemExit("usage: csbatch [sbatch-options] script [script-args]")
-            return ParsedSbatchInvocation(passthrough, argv[index + 2 :], Path(argv[index + 1]).resolve(), None, user_parsable)
-        if value == "--parsable":
-            user_parsable = True
-            index += 1
-            continue
-        if value == "--wrap":
-            if index + 1 >= len(argv):
-                raise SystemExit("csbatch --wrap requires a command")
-            return ParsedSbatchInvocation(passthrough, [], None, argv[index + 1], user_parsable)
-        if value.startswith("--wrap="):
-            return ParsedSbatchInvocation(passthrough, [], None, value.split("=", 1)[1], user_parsable)
+            return options, argv[index + 1] if index + 1 < len(argv) else None
+        if value == ":":
+            # A heterogeneous submission is not one resource description.
+            return [], None
+        if not value.startswith("-") or value == "-":
+            return options, value
         if value.startswith("--"):
-            passthrough.append(value)
             name = value[2:].split("=", 1)[0]
             if "=" not in value and name in SBATCH_LONG_OPTIONS_WITH_ARG:
                 if index + 1 >= len(argv):
-                    raise SystemExit(f"csbatch {value} requires an argument")
-                passthrough.append(argv[index + 1])
+                    return options, None
+                options.append(value + "=" + argv[index + 1])
                 index += 2
-                continue
-            index += 1
-            continue
-        if value.startswith("-") and value != "-":
-            passthrough.append(value)
-            if len(value) == 2 and value[1] in SBATCH_SHORT_OPTIONS_WITH_ARG:
-                if index + 1 >= len(argv):
-                    raise SystemExit(f"csbatch {value} requires an argument")
-                passthrough.append(argv[index + 1])
-                index += 2
-                continue
-            index += 1
-            continue
-        script_path = Path(value).resolve()
-        if not script_path.exists() or not script_path.is_file():
-            raise SystemExit(f"csbatch script does not exist or is not a file: {value}")
-        return ParsedSbatchInvocation(passthrough, argv[index + 1 :], script_path, None, user_parsable)
-    raise SystemExit("usage: csbatch [sbatch-options] script [script-args]")
+            elif "=" in value or name in {
+                "parsable", "quiet", "verbose", "wait", "test-only", "help",
+                "usage", "version", "hold", "requeue", "no-requeue", "exclusive",
+                "oversubscribe", "overcommit", "get-user-env", "contiguous",
+                "ignore-pbs", "no-kill", "spread-job", "use-min-nodes",
+            }:
+                options.append(value)
+                index += 1
+            else:
+                return [], None
+        else:
+            consumed = False
+            for offset, char in enumerate(value[1:], 1):
+                if char in SBATCH_SHORT_OPTIONS_WITH_ARG:
+                    argument = value[offset + 1:]
+                    if not argument and index + 1 < len(argv):
+                        argument = argv[index + 1]
+                    options.append("-" + char + argument)
+                    index += 2 if offset == len(value) - 1 else 1
+                    consumed = True
+                    break
+                if char not in "vQWHhVOsk":
+                    return [], None
+                options.append("-" + char)
+            if not consumed:
+                index += 1
+    return options, None
 
 
-def _instrument_script(original: str, cslurm_root: Path) -> str:
-    root = str(cslurm_root.resolve())
-    prelude = f"""\
-export CSLURM_ROOT={_shell_single_quote(root)}
-export CSLURM_JOB_ID="${{SLURM_JOB_ID:-unknown}}"
-export CSLURM_SUBMIT_DIR="${{SLURM_SUBMIT_DIR:-$(pwd)}}"
-export CSLURM_LOG_DIR="$CSLURM_ROOT/jobs/$CSLURM_JOB_ID/runtime"
-mkdir -p "$CSLURM_LOG_DIR"
-_cslurm_record_finish() {{
-  _cslurm_exit_code=$?
-  _cslurm_time=$(date -u +"%Y-%m-%dT%H:%M:%SZ")
-  _cslurm_host=$(hostname 2>/dev/null || printf unknown)
-  mkdir -p "$CSLURM_LOG_DIR"
-  printf '{{"time":"%s","job_id":"%s","hostname":"%s","exit_code":%s,"event_type":"PROGRAM_FINISHED"}}\\n' "$_cslurm_time" "$CSLURM_JOB_ID" "$_cslurm_host" "$_cslurm_exit_code" >> "$CSLURM_LOG_DIR/finish.log"
-}}
-trap _cslurm_record_finish EXIT
-"""
-    lines = original.splitlines()
-    insert_at = 0
-    if lines and lines[0].startswith("#!"):
-        insert_at = 1
-    while insert_at < len(lines) and lines[insert_at].strip().startswith("#SBATCH"):
-        insert_at += 1
-    return "\n".join([*lines[:insert_at], prelude, *lines[insert_at:]]) + "\n"
+def _snapshot(argv):
+    cwd = Path.cwd()
+    options, script_arg = _metadata_args(argv)
+    wrap = parse_cli_option(options, "wrap")
+    script, script_text = None, None
+    chdir = parse_cli_option(options, "chdir", "-D") or os.environ.get("SBATCH_CHDIR")
+    working = Path(chdir) if chdir else cwd
+    if not working.is_absolute():
+        working = cwd / working
+    if wrap is not None:
+        # Archive a representation only. Slurm still receives the original --wrap.
+        script_text = "#!/bin/sh\n" + wrap + "\n"
+    elif script_arg and script_arg != "-":
+        candidates = [working / script_arg, cwd / script_arg]
+        found = shutil.which(script_arg)
+        if found:
+            candidates.append(Path(found))
+        script = next((p.resolve() for p in candidates if p.is_file()), None)
+        if script is not None and script.stat().st_size <= 1024 * 1024:
+            script_text = script.read_bytes().decode(errors="surrogateescape")
+    metadata = {}
+    for name, short, env in (
+        ("job-name", "-J", "SBATCH_JOB_NAME"), ("partition", "-p", "SBATCH_PARTITION"),
+        ("account", "-A", "SBATCH_ACCOUNT"), ("qos", "-q", "SBATCH_QOS"),
+        ("array", "-a", "SBATCH_ARRAY_INX"), ("dependency", "-d", "SBATCH_DEPENDENCY"),
+        ("nodes", "-N", "SBATCH_NODES"), ("nodelist", "-w", "SBATCH_NODELIST"),
+        ("output", "-o", "SBATCH_OUTPUT"), ("error", "-e", "SBATCH_ERROR"),
+        ("chdir", "-D", "SBATCH_CHDIR"),
+    ):
+        metadata[name] = (parse_cli_option(options, name, short) or os.environ.get(env)
+                          or parse_script_option(script_text or "", name, short))
+    if not metadata["job-name"]:
+        metadata["job-name"] = script.name if script else ("wrap" if wrap is not None else None)
+    return {
+        "argv": argv, "cwd": str(cwd), "time": datetime.now(timezone.utc).isoformat(),
+        "script_path": str(script) if script else None, "script_text": script_text,
+        "metadata": metadata, "user": os.environ.get("USER") or getpass.getuser(),
+        "no_submission": any(v in {"--help", "--usage", "--version", "--test-only", "-h", "-V"}
+                             for v in options),
+    }
 
 
-def _wrap_script_text(command: str) -> str:
-    return "#!/bin/bash\n" + command + "\n"
+def _job_identity(output):
+    for line in output.splitlines():
+        match = re.fullmatch(
+            r"(?:Submitted batch job )?([0-9]+)(?:;([\w.-]+)| on cluster ([\w.-]+))?", line.strip())
+        if match:
+            return match[1], match[2] or match[3]
+    return None, None
 
 
-def _queue_submission_work(kind, job_id):
-    from cslurm.work import submit, wake
-    submit(kind, job_id)
+def submit_batch_result(argv: list[str], *, stream: bool = False, defer: bool = False) -> BatchSubmission:
+    record = None
     try:
-        return wake()
-    except OSError:
-        # Durable work remains queued; the next tracker/worker pass can recover it.
-        return None
-
-
-def launch_auto_summary(job_id: str) -> str:
-    if not ai_auto_summary_enabled():
-        return "disabled"
-    pid = _queue_submission_work("summary", job_id)
-    record_auto_summary_queued(job_id, pid=pid)
-    return "queued"
-
-
-def launch_static_analysis(job_id: str) -> str:
-    if not static_analysis_enabled():
-        return "disabled"
-    pid = _queue_submission_work("static", job_id)
-    record_static_analysis_queued(job_id, pid=pid)
-    return "queued"
-
-
-def submit_batch_result(argv: list[str]) -> BatchSubmission:
-    # Fail before submitting a real job if its bookkeeping cannot be safe here.
-    require_local_database()
-    with connect():
+        record = _snapshot(argv)
+    except Exception:
+        # Metadata can never veto an invocation supported by the installed Slurm.
         pass
-    parsed = _parse_sbatch_invocation(argv)
-    script = parsed.script_path
-    script_text = script.read_text() if script is not None else _wrap_script_text(parsed.wrap_command or "")
-    submitted_at = _now()
-    command = command_text("csbatch", argv)
-
-    prepared_root = root_dir() / "pending"
-    prepared_root.mkdir(parents=True, exist_ok=True)
-    prepared_stem = script.stem if script is not None else "wrap"
-    prepared_script = prepared_root / f"{prepared_stem}.instrumented.slurm"
-    prepared_script.write_text(_instrument_script(script_text, root_dir()))
-
-    result = run_slurm_command("sbatch", ["--parsable", *parsed.passthrough_args, str(prepared_script), *parsed.script_args])
-    if result.returncode != 0:
-        raise RuntimeError(result.stderr or result.stdout)
-
-    job_id = result.stdout.strip().split(";", 1)[0]
-    if not job_id:
-        raise RuntimeError("sbatch did not return a job id")
-
-    job_dir = root_dir() / "jobs" / job_id
-    job_dir.mkdir(parents=True, exist_ok=True)
-    copied_original = job_dir / "original.slurm"
-    copied_instrumented = job_dir / "instrumented.slurm"
-    if script is not None:
-        shutil.copyfile(script, copied_original)
-    else:
-        copied_original.write_text(script_text)
-    shutil.copyfile(prepared_script, copied_instrumented)
-    git_meta = collect_git_metadata(Path.cwd())
-    (job_dir / "git_status.txt").write_text(git_meta.status)
-    (job_dir / "git.diff").write_text(git_meta.diff)
-    script_dir = script.parent if script is not None else Path.cwd()
-    stdout_path = _resolve_sbatch_path(
-        metadata_value(script_text, parsed.passthrough_args, "output", "-o"), script_dir, job_id
-    ) or _default_slurm_output_path(script_dir, job_id)
-    stderr_path = (
-        _resolve_sbatch_path(metadata_value(script_text, parsed.passthrough_args, "error", "-e"), script_dir, job_id)
-        or stdout_path
-    )
-
-    def record_submission(conn):
-        conn.execute(
-            """
-            insert or replace into jobs (
-              job_id, submitted_at, submit_cwd, command, original_script_path,
-              copied_script_path, user, job_name, partition, account, qos, array_spec,
-              dependency, nodes, nodelist, stdout_path, stderr_path, git_commit, git_dirty,
-              state, created_at, updated_at
-            ) values (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-            """,
-            (
-                job_id,
-                submitted_at,
-                os.getcwd(),
-                command,
-                str(script) if script is not None else None,
-                str(copied_instrumented),
-                _current_user(),
-                metadata_value(script_text, parsed.passthrough_args, "job-name", "-J"),
-                metadata_value(script_text, parsed.passthrough_args, "partition", "-p"),
-                metadata_value(script_text, parsed.passthrough_args, "account", "-A"),
-                metadata_value(script_text, parsed.passthrough_args, "qos", "-q"),
-                metadata_value(script_text, parsed.passthrough_args, "array", "-a"),
-                metadata_value(script_text, parsed.passthrough_args, "dependency", "-d"),
-                metadata_value(script_text, parsed.passthrough_args, "nodes", "-N"),
-                metadata_value(script_text, parsed.passthrough_args, "nodelist", "-w"),
-                stdout_path,
-                stderr_path,
-                git_meta.commit,
-                1 if git_meta.dirty else 0,
-                "UNKNOWN",
-                submitted_at,
-                submitted_at,
-            ),
-        )
-        conn.execute(
-            """
-            insert into job_events (job_id, event_time, event_type, command, cwd, raw_output)
-            values (?, ?, ?, ?, ?, ?)
-            """,
-            (job_id, submitted_at, "SUBMITTED", command, os.getcwd(), result.stdout),
-        )
-        _record_copied_file(
-            conn,
-            job_id=job_id,
-            path=copied_original,
-            relpath="original.slurm",
-            role="original_script",
-        )
-        _record_copied_file(
-            conn,
-            job_id=job_id,
-            path=copied_instrumented,
-            relpath="instrumented.slurm",
-            role="instrumented_script",
-        )
-
-    run_write_transaction(record_submission)
-
-    launch_static_analysis(job_id)
-    launch_auto_summary(job_id)
-    return BatchSubmission(job_id=job_id, user_parsable=parsed.user_parsable, stderr=result.stderr)
+    result = native_sbatch.run(argv, stream=stream)
+    stdout = result.stdout.decode(errors="replace")
+    stderr = result.stderr.decode(errors="replace")
+    job_id, cluster = _job_identity(stdout)
+    if record is not None and record.get("no_submission"):
+        job_id = None
+    try:
+        from cslurm.slurm.submissions import publish, ingest
+        if record is None:
+            record = {"argv": argv, "cwd": os.getcwd(),
+                      "time": datetime.now(timezone.utc).isoformat(), "metadata": {}}
+        record.update(job_id=job_id, cluster=cluster, stdout=stdout, returncode=result.returncode)
+        if not record.get("no_submission"):
+            path = publish(record)
+            if defer:
+                from cslurm.work import wake
+                wake()
+            else:
+                ingest(paths=[path])
+    except Exception:
+        # Do not pollute native stderr or encourage a retry of an accepted job.
+        # A published receipt remains available to the next tracker pass.
+        pass
+    return BatchSubmission(job_id, stdout, stderr, result.returncode)
 
 
-def submit_batch(argv: list[str]) -> str:
-    return submit_batch_result(argv).job_id
+def submit_batch(argv: list[str]) -> str | None:
+    result = submit_batch_result(argv)
+    if result.returncode and result.job_id is None:
+        raise RuntimeError(result.stderr or result.stdout or f"sbatch exited {result.returncode}")
+    return result.job_id
 
 
 def main() -> None:
-    result = submit_batch_result(os.sys.argv[1:])
-    if result.stderr:
-        print(result.stderr, end="", file=sys.stderr)
-    if result.user_parsable:
-        print(result.job_id)
-    else:
-        print(f"Submitted batch job {result.job_id}")
+    try:
+        if os.environ.get("CSLURM_TRACK_SUBMISSIONS", "true").lower() in {"false", "0", "off"}:
+            executable = native_sbatch.executable()
+            os.execv(executable, [executable, *sys.argv[1:]])
+        result = submit_batch_result(sys.argv[1:], stream=True, defer=True)
+    except OSError as exc:
+        print(f"csbatch: {exc}", file=sys.stderr)
+        raise SystemExit(127 if isinstance(exc, FileNotFoundError) else 126)
+    native_sbatch.exit_like_native(result.returncode)
 
 
 if __name__ == "__main__":

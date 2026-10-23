@@ -40,12 +40,14 @@ def test_maintenance_guard_prevents_opening_database(isolated_home):
     assert not (isolated_home / 'db.sqlite').exists()
 
 
-def test_csbatched_job_not_submitted_on_network_database(isolated_home, monkeypatch):
+def test_csbatch_on_network_database_submits_and_spools(isolated_home, fake_bin, monkeypatch):
     from cslurm.cli import csbatch
     monkeypatch.setattr(storage, 'filesystem_type', lambda _: 'nfs4')
-    monkeypatch.setattr(csbatch, 'run_slurm_command', lambda *a: pytest.fail('submitted a job'))
-    with pytest.raises(storage.UnsafeDatabaseError):
-        csbatch.submit_batch_result(['--wrap=true'])
+    write_executable(fake_bin / 'sbatch', '#!/bin/sh\nprintf "Submitted batch job 123\\n"\n')
+    result = csbatch.submit_batch_result(['--wrap=true'])
+    assert result.returncode == 0 and result.job_id == '123'
+    assert not (isolated_home / 'db.sqlite').exists()
+    assert len(list((isolated_home / 'spool/sbatch').glob('*.json'))) == 1
 
 
 def test_legacy_wal_requires_explicit_offline_migration(isolated_home):

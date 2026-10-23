@@ -6,7 +6,7 @@ The design rule is simple: deterministic code records facts; AI only summarizes 
 
 ## Current Features
 
-- `csbatch`: wraps `sbatch --parsable`, passes through normal sbatch options, supports script submissions and basic `--wrap`, copies the original or generated script, writes an instrumented script, records job metadata, git status/diff, stdout/stderr paths, submission events, and a program-finished runtime marker.
+- `csbatch`: invokes native `sbatch` with unchanged arguments and scripts, forwards native output and exit status, and publishes submission receipts for background tracking. No forced `--parsable`, script replacement, or runtime trap. See [sbatch compatibility](docs/sbatch-compatibility.md).
 - `csrun`: wraps direct `srun` execution, passes stdout/stderr through in CLI mode, and records a standalone local job record when outside an existing allocation.
 - `cscancel`: wraps `scancel`, passes through scancel options, and records a cancellation request event with an optional CleverSlurm-only `--note`.
 - `ctrack`: polls `sacct` for known jobs and updates state, exit code, derived exit code, elapsed time, memory, and node list.
@@ -262,9 +262,9 @@ Remove only CleverSlurm-managed shims:
 cshim remove
 ```
 
-After a successful submission, `csbatch` queues the AI submission summary in a detached background worker and returns immediately. `cjobs events <job_id>` first shows `AI_SUMMARY_QUEUED`; when the worker finishes it records `AI_SUMMARY_CREATED` and stores `summary_json`, or records `AI_SUMMARY_FAILED` if the request fails. Worker stdout/stderr goes to `~/.cslurm/jobs/<job_id>/auto_summary.log`.
+After native `sbatch` returns, the CLI publishes a receipt under `~/.cslurm/spool/sbatch/` without opening SQLite. A background worker imports the job and atomically queues static analysis and the enabled AI summary. `ctrack` also imports pending receipts, so keep `ctrack auto on` enabled. A newly submitted job may briefly be absent from `cjobs` until ingestion completes. `cjobs events <job_id>` shows `AI_SUMMARY_QUEUED`; `cjobs summary <job_id>` displays the completed summary. Work status and retries are visible with `cwork list`; process diagnostics go to `~/.cslurm/workers.log`.
 
-`csbatch` also queues static script analysis in a detached worker and returns immediately. The worker reads the copied submission script from `~/.cslurm/jobs/<job_id>/original.slurm`, recognizes common MATLAB and Python entry forms such as `$EXE -r Dinf`, `matlab -batch Dinf`, `$PY run.py`, and `srun python3 train.py`, then records rows visible through `cjobs commands <job_id>` and `cjobs files <job_id>`. It does not inject Python/MATLAB runtime wrappers or prepend `~/.cslurm/wrappers` to the batch job's `PATH`, so it should not change application process startup performance. Worker stdout/stderr goes to `~/.cslurm/jobs/<job_id>/static_analysis.log`.
+The static worker reads the available script snapshot from `~/.cslurm/jobs/<job_id>/original.slurm`, recognizes common MATLAB and Python entry forms such as `$EXE -r Dinf`, `matlab -batch Dinf`, `$PY run.py`, and `srun python3 train.py`, then records rows visible through `cjobs commands <job_id>` and `cjobs files <job_id>`. Analysis uses the effective job working directory. It does not inject runtime wrappers, traps, or change the batch job's `PATH`. Stdin and unrecognized plugin syntax may not have an archived script; see the compatibility document for metadata limits.
 
 Track known jobs:
 
@@ -377,13 +377,13 @@ always uses a new directory and never replaces the live database. See
 
 ## Support Boundaries
 
-`csbatch` preserves leading `#SBATCH` directives and passes most normal sbatch command-line options to real `sbatch`. Basic `--wrap` is translated to an instrumented temporary script. Some unusual sbatch forms may still need explicit testing before replacing `sbatch` cluster-wide.
+`csbatch` delegates all argument validation and script execution to native Slurm. `--help`, `--version`, `--test-only`, quiet submissions, stdin, arrays, heterogeneous arguments, script arguments and `--wrap` are not rewritten. A failing `--wait` job keeps its native exit code and is still tracked when an ID is observed. Tracking availability is not a prerequisite for submission. Quiet/unrecognized output and cluster-qualified IDs are retained as unresolved receipts rather than guessed into the local database. Terminal-sensitive plugins can use `CSLURM_TRACK_SUBMISSIONS=false csbatch ...` for direct native exec without tracking. See [compatibility and limitations](docs/sbatch-compatibility.md).
 
 `csrun` passes arguments to real `srun`. In CLI mode it lets the child process inherit stdout/stderr, so it behaves more like `srun` for normal terminal use. Interactive PTY-heavy workflows such as `srun --pty bash` should still be smoke-tested on the target cluster before relying on a rename.
 
 `cscancel` passes arguments to real `scancel` after removing CleverSlurm's optional `--note`. If you rename it to `scancel`, broad scancel commands keep their normal Slurm meaning; use the same caution you would use with real `scancel`.
 
-For batch jobs, CleverSlurm records submission immediately. The instrumented script also writes a runtime `PROGRAM_FINISHED` marker when the batch script exits. Run `ctrack` to ingest runtime markers and Slurm accounting state into SQLite. MATLAB/Python command detection is currently static and best-effort; it records obvious entry files and configured stdout/stderr paths, but it does not trace every file opened by the application or infer domain-specific output files. Notification analysis scans recorded stdout/stderr paths and also falls back to Slurm's default `slurm-<job_id>.out` under the submit directory for older records that do not have paths stored.
+For new batch jobs, completion is recorded from Slurm accounting by `ctrack`; no `PROGRAM_FINISHED` trap is injected. Existing runtime markers from earlier versions remain readable. Static command detection is best-effort: it does not trace every file opened by the application or infer domain-specific output files. Notification analysis scans recorded stdout/stderr paths and falls back to Slurm's default `slurm-<job_id>.out` under the submit directory for older records without recorded paths. This upgrade does not enqueue historical completion work or replay old notifications.
 
 ## Safety Notes
 

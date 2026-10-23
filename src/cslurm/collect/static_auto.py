@@ -50,6 +50,8 @@ def _submission_script_path(job_id: str, row) -> Path | None:
 
 
 def _script_dir(row) -> Path:
+    if "effective_chdir" in row.keys() and row["effective_chdir"]:
+        return Path(row["effective_chdir"])
     if row["original_script_path"]:
         return Path(row["original_script_path"]).expanduser().resolve().parent
     if row["submit_cwd"]:
@@ -122,7 +124,7 @@ def static_analyze_submission(job_id: str) -> str:
         init_db(conn)
         row = conn.execute(
             """
-            select job_id, submitted_at, submit_cwd, original_script_path,
+            select job_id, submitted_at, submit_cwd, effective_chdir, original_script_path,
                    copied_script_path, stdout_path, stderr_path
             from jobs where job_id = ?
             """,

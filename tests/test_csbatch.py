@@ -1,6 +1,7 @@
 import sqlite3
 import subprocess
 import sys
+from pathlib import Path
 
 from conftest import write_executable
 
@@ -26,10 +27,7 @@ def test_csbatch_records_fake_sbatch_job_id_and_copies_scripts(isolated_home, fa
     assert job_id == "123456"
     job_dir = isolated_home / "jobs" / "123456"
     assert (job_dir / "original.slurm").read_text() == script.read_text()
-    instrumented = (job_dir / "instrumented.slurm").read_text()
-    assert "CSLURM_LOG_DIR" in instrumented
-    assert "python run.py" in instrumented
-    assert instrumented.index("#SBATCH --job-name=test-job") < instrumented.index("CSLURM_LOG_DIR")
+    assert not (job_dir / "instrumented.slurm").exists()
 
     with sqlite3.connect(isolated_home / "db.sqlite") as conn:
         row = conn.execute(
@@ -66,7 +64,7 @@ def test_csbatch_records_stdout_and_stderr_paths_with_job_id(isolated_home, fake
     with sqlite3.connect(isolated_home / "db.sqlite") as conn:
         row = conn.execute("select stdout_path, stderr_path from jobs where job_id = '123456'").fetchone()
 
-    assert row == (str(tmp_path / "logs" / "smoke-123456.out"), str(tmp_path / "logs" / "smoke-123456.err"))
+    assert row == (str(Path.cwd() / "logs" / "smoke-123456.out"), str(Path.cwd() / "logs" / "smoke-123456.err"))
 
 
 def test_csbatch_records_stdout_and_stderr_paths_from_cli_options(isolated_home, fake_bin, tmp_path, monkeypatch):
@@ -82,7 +80,7 @@ def test_csbatch_records_stdout_and_stderr_paths_from_cli_options(isolated_home,
     with sqlite3.connect(isolated_home / "db.sqlite") as conn:
         row = conn.execute("select stdout_path, stderr_path from jobs where job_id = '123456'").fetchone()
 
-    assert row == (str(tmp_path / "cli-123456.out"), str(tmp_path / "cli-123456.err"))
+    assert row == (str(Path.cwd() / "cli-123456.out"), str(Path.cwd() / "cli-123456.err"))
 
 
 def test_csbatch_records_squeue_like_submission_metadata(isolated_home, fake_bin, tmp_path, monkeypatch):
@@ -163,7 +161,7 @@ def test_csbatch_records_default_slurm_log_path_when_not_configured(isolated_hom
     with sqlite3.connect(isolated_home / "db.sqlite") as conn:
         row = conn.execute("select stdout_path, stderr_path from jobs where job_id = '123456'").fetchone()
 
-    default_log = str(tmp_path / "slurm-123456.out")
+    default_log = str(Path.cwd() / "slurm-123456.out")
     assert row == (default_log, default_log)
 
 
@@ -183,7 +181,6 @@ def test_csbatch_records_copied_scripts_as_job_files(isolated_home, fake_bin, tm
         ).fetchall()
 
     assert rows == [
-        ("instrumented.slurm", "instrumented_script", "csbatch", 1),
         ("original.slurm", "original_script", "csbatch", 1),
     ]
 
@@ -203,9 +200,7 @@ def test_csbatch_passes_sbatch_options_and_script_args_to_real_sbatch(isolated_h
     submit_batch(["-p", "CPU2", "--time=00:01:00", str(script), "arg1", "arg2"])
 
     called_args = calls.read_text().splitlines()
-    assert called_args[:4] == ["--parsable", "-p", "CPU2", "--time=00:01:00"]
-    assert called_args[4].endswith("job.instrumented.slurm")
-    assert called_args[5:] == ["arg1", "arg2"]
+    assert called_args == ["-p", "CPU2", "--time=00:01:00", str(script), "arg1", "arg2"]
 
 
 def test_csbatch_does_not_treat_chdir_argument_as_script(isolated_home, fake_bin, tmp_path, monkeypatch):
@@ -225,11 +220,10 @@ def test_csbatch_does_not_treat_chdir_argument_as_script(isolated_home, fake_bin
     submit_batch(["--chdir", str(chdir), str(script)])
 
     called_args = calls.read_text().splitlines()
-    assert called_args[:3] == ["--parsable", "--chdir", str(chdir)]
-    assert called_args[3].endswith("job.instrumented.slurm")
+    assert called_args == ["--chdir", str(chdir), str(script)]
 
 
-def test_csbatch_wrap_is_translated_to_instrumented_script(isolated_home, fake_bin, tmp_path, monkeypatch):
+def test_csbatch_wrap_is_not_translated(isolated_home, fake_bin, tmp_path, monkeypatch):
     _disable_auto_summary(monkeypatch)
     calls = tmp_path / "sbatch.calls"
     write_executable(
@@ -242,14 +236,12 @@ def test_csbatch_wrap_is_translated_to_instrumented_script(isolated_home, fake_b
     submit_batch(["-p", "CPU2", "--wrap", "echo wrapped"])
 
     called_args = calls.read_text().splitlines()
-    assert called_args[:3] == ["--parsable", "-p", "CPU2"]
-    assert "--wrap" not in called_args
-    instrumented = (isolated_home / "jobs" / "123456" / "instrumented.slurm").read_text()
-    assert "echo wrapped" in instrumented
-    assert "PROGRAM_FINISHED" in instrumented
+    assert called_args == ["-p", "CPU2", "--wrap", "echo wrapped"]
+    archived = (isolated_home / "jobs" / "123456" / "original.slurm").read_text()
+    assert archived == "#!/bin/sh\necho wrapped\n"
 
 
-def test_csbatch_instrumented_script_records_program_finish(isolated_home, fake_bin, tmp_path, monkeypatch):
+def test_csbatch_does_not_inject_runtime_traps(isolated_home, fake_bin, tmp_path, monkeypatch):
     _disable_auto_summary(monkeypatch)
     write_executable(fake_bin / "sbatch", "#!/bin/sh\nprintf '123456\\n'\n")
     script = tmp_path / "job.slurm"
@@ -259,11 +251,9 @@ def test_csbatch_instrumented_script_records_program_finish(isolated_home, fake_
 
     submit_batch([str(script)])
 
-    instrumented = (isolated_home / "jobs" / "123456" / "instrumented.slurm").read_text()
-    assert "CSLURM_ROOT=" in instrumented
-    assert "finish.log" in instrumented
-    assert "PROGRAM_FINISHED" in instrumented
-    assert "$CSLURM_ROOT/wrappers" not in instrumented
+    archived = (isolated_home / "jobs" / "123456" / "original.slurm").read_text()
+    assert archived == script.read_text()
+    assert "PROGRAM_FINISHED" not in archived
 
 
 def test_csbatch_module_entrypoint_runs_main(isolated_home, fake_bin, tmp_path, monkeypatch):
@@ -280,7 +270,7 @@ def test_csbatch_module_entrypoint_runs_main(isolated_home, fake_bin, tmp_path, 
         check=True,
     )
 
-    assert result.stdout == "Submitted batch job 123456\n"
+    assert result.stdout == "123456\n"
 
 
 def test_csbatch_module_entrypoint_preserves_parsable_output(isolated_home, fake_bin, tmp_path, monkeypatch):
@@ -305,84 +295,46 @@ def test_csbatch_queues_submission_summary_after_recording_job(isolated_home, fa
     write_executable(fake_bin / "sbatch", "#!/bin/sh\nprintf '123456\\n'\n")
     script = tmp_path / "job.slurm"
     script.write_text("#!/bin/bash\nhostname\n")
-    launched = []
-
-    def fake_launch(job_id):
-        from cslurm.ai.auto import record_auto_summary_queued
-        launched.append(job_id)
-        record_auto_summary_queued(job_id, pid=777)
-        return "queued"
-
-    monkeypatch.setattr("cslurm.cli.csbatch.launch_auto_summary", fake_launch)
-
     from cslurm.cli.csbatch import submit_batch
-
     submit_batch([str(script)])
-
-    assert launched == ["123456"]
     with sqlite3.connect(isolated_home / "db.sqlite") as conn:
-        row = conn.execute("select summary_json from jobs where job_id = '123456'").fetchone()
-        events = conn.execute(
-            "select event_type, raw_output from job_events where job_id = '123456' order by id"
-        ).fetchall()
-
-    assert row[0] is None
-    assert [event[0] for event in events] == ["SUBMITTED", "AI_SUMMARY_QUEUED"]
-    assert events[1][1] == "pid=777"
+        assert conn.execute("select summary_json from jobs").fetchone()[0] is None
+        assert conn.execute("select kind,status from work_items").fetchall() == [("summary", "pending")]
+        events = conn.execute("select event_type from job_events order by id").fetchall()
+    assert events == [("SUBMITTED",), ("AI_SUMMARY_QUEUED",)]
 
 
-def test_csbatch_records_summary_queue_failure_without_breaking_submission(isolated_home, fake_bin, tmp_path, monkeypatch):
+def test_csbatch_retains_receipt_when_atomic_queue_write_fails(isolated_home, fake_bin, tmp_path, monkeypatch):
     monkeypatch.setenv("CSLURM_STATIC_ANALYSIS", "false")
     write_executable(fake_bin / "sbatch", "#!/bin/sh\nprintf '123456\\n'\n")
-    script = tmp_path / "job.slurm"
-    script.write_text("#!/bin/bash\nhostname\n")
-
-    def fake_launch(job_id):
-        from cslurm.ai.auto import record_auto_summary_failure
-        record_auto_summary_failure(job_id, RuntimeError("could not start AI worker"))
-        return "failed"
-
-    monkeypatch.setattr("cslurm.cli.csbatch.launch_auto_summary", fake_launch)
-
     from cslurm.cli.csbatch import submit_batch
-
-    job_id = submit_batch([str(script)])
-
-    assert job_id == "123456"
+    from cslurm.slurm.submissions import ingest
+    from cslurm import work
+    original = work.enqueue
+    def fail(*args):
+        raise RuntimeError("queue unavailable")
+    monkeypatch.setattr(work, "enqueue", fail)
+    assert submit_batch(["--wrap=true"]) == "123456"
     with sqlite3.connect(isolated_home / "db.sqlite") as conn:
-        event = conn.execute(
-            "select event_type, raw_output from job_events where job_id = '123456' and event_type = 'AI_SUMMARY_FAILED'"
-        ).fetchone()
+        assert conn.execute("select count(*) from jobs").fetchone()[0] == 0
+    assert len(list((isolated_home / "spool/sbatch").glob("*.json"))) == 1
+    monkeypatch.setattr(work, "enqueue", original)
+    assert ingest() == 1
+    with sqlite3.connect(isolated_home / "db.sqlite") as conn:
+        assert conn.execute("select kind,status from work_items").fetchall() == [("summary", "pending")]
 
-    assert event[0] == "AI_SUMMARY_FAILED"
-    assert "could not start AI worker" in event[1]
 
-
-def test_launch_auto_summary_starts_detached_worker(isolated_home, monkeypatch):
+def test_submission_wakes_detached_worker(isolated_home, fake_bin, monkeypatch):
     monkeypatch.setenv("CSLURM_WORKER_AUTOSTART", "true")
-    from cslurm.cli.csbatch import launch_auto_summary
-
+    write_executable(fake_bin / "sbatch", "#!/bin/sh\nprintf '123456\\n'\n")
+    from cslurm.cli.csbatch import submit_batch_result
+    from cslurm import work
     launched = []
-
-    class FakeProcess:
-        pid = 888
-
-    def fake_popen(argv, **kwargs):
-        launched.append((argv, kwargs))
-        return FakeProcess()
-
-    monkeypatch.setattr("cslurm.cli.csbatch.subprocess.Popen", fake_popen)
-
-    assert launch_auto_summary("123456") == "queued"
-
-    with sqlite3.connect(isolated_home / "db.sqlite") as conn:
-        event = conn.execute(
-            "select event_type, raw_output from job_events where job_id = '123456'"
-        ).fetchone()
-
-    assert launched[0][0][-3:-1] == ["-m", "cslurm.work"]
-    assert launched[0][1]["start_new_session"] is True
-    assert event == ("AI_SUMMARY_QUEUED", "pid=888")
+    monkeypatch.setattr(work, "wake", lambda: launched.append("wake"))
+    result = submit_batch_result(["--wrap=true"], defer=True)
+    assert result.job_id == "123456"
+    assert launched == ["wake"]
+    assert not (isolated_home / "db.sqlite").exists()
 
 
 def test_csbatch_queues_static_analysis_after_recording_job(isolated_home, fake_bin, tmp_path, monkeypatch):
@@ -390,55 +342,24 @@ def test_csbatch_queues_static_analysis_after_recording_job(isolated_home, fake_
     write_executable(fake_bin / "sbatch", "#!/bin/sh\nprintf '123456\\n'\n")
     script = tmp_path / "job.slurm"
     script.write_text("#!/bin/bash\npython run.py\n")
-    launched = []
-
-    def fake_launch(job_id):
-        from cslurm.collect.static_auto import record_static_analysis_queued
-
-        launched.append(job_id)
-        record_static_analysis_queued(job_id, pid=999)
-        return "queued"
-
-    monkeypatch.setattr("cslurm.cli.csbatch.launch_static_analysis", fake_launch)
-
     from cslurm.cli.csbatch import submit_batch
-
-    submit_batch([str(script)])
-
-    assert launched == ["123456"]
+    assert submit_batch([str(script)]) == "123456"
     with sqlite3.connect(isolated_home / "db.sqlite") as conn:
-        events = conn.execute(
-            "select event_type, raw_output from job_events where job_id = '123456' order by id"
-        ).fetchall()
-
-    assert events == [("SUBMITTED", "123456\n"), ("STATIC_ANALYSIS_QUEUED", "pid=999")]
+        assert conn.execute("select kind,status from work_items").fetchall() == [("static", "pending")]
+        events = conn.execute("select event_type from job_events order by id").fetchall()
+    assert events == [("SUBMITTED",), ("STATIC_ANALYSIS_QUEUED",)]
 
 
-def test_launch_static_analysis_starts_detached_worker(isolated_home, monkeypatch):
-    monkeypatch.setenv("CSLURM_WORKER_AUTOSTART", "true")
-    from cslurm.cli.csbatch import launch_static_analysis
-
-    launched = []
-
-    class FakeProcess:
-        pid = 889
-
-    def fake_popen(argv, **kwargs):
-        launched.append((argv, kwargs))
-        return FakeProcess()
-
-    monkeypatch.setattr("cslurm.cli.csbatch.subprocess.Popen", fake_popen)
-
-    assert launch_static_analysis("123456") == "queued"
-
-    with sqlite3.connect(isolated_home / "db.sqlite") as conn:
-        event = conn.execute(
-            "select event_type, raw_output from job_events where job_id = '123456'"
-        ).fetchone()
-
-    assert launched[0][0][-3:-1] == ["-m", "cslurm.work"]
-    assert launched[0][1]["start_new_session"] is True
-    assert event == ("STATIC_ANALYSIS_QUEUED", "pid=889")
+def test_worker_start_failure_does_not_break_submission(isolated_home, fake_bin, monkeypatch):
+    write_executable(fake_bin / "sbatch", "#!/bin/sh\nprintf '123456\\n'\n")
+    from cslurm.cli.csbatch import submit_batch_result
+    from cslurm import work
+    def fail():
+        raise OSError("cannot launch")
+    monkeypatch.setattr(work, "wake", fail)
+    result = submit_batch_result(["--wrap=true"], defer=True)
+    assert result.returncode == 0 and result.job_id == "123456"
+    assert len(list((isolated_home / "spool/sbatch").glob("*.json"))) == 1
 
 
 def test_background_auto_summary_worker_records_created_summary(isolated_home, monkeypatch):

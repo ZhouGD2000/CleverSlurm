@@ -26,7 +26,9 @@ The test suite is split automatically:
 - Fake Slurm tests always run. They create fake `sbatch`, `srun`, `sacct`, and `scancel` executables in temporary directories and put those directories first in `PATH`.
 - Real Slurm tests are marked `real_slurm`. At collection time pytest probes `sbatch`, `sacct`, `squeue`, `sinfo`, `srun`, and `scancel`. If any command is unavailable or does not answer `--version`, the real tests are skipped. If all commands are available, pytest runs the real smoke tests.
 
-Real Slurm tests may submit one short smoke job. They never call `scancel`.
+Real Slurm tests submit one short smoke job plus three short file/stdin/wrap
+parity jobs. They use isolated roots, disable notifications, and never call
+`scancel`. Informational, invalid-option and `--test-only` comparisons create no jobs.
 
 ## Local Tests
 
@@ -58,11 +60,12 @@ CSLURM_RUN_REAL_SLURM=0 python3 -m pytest -q
 The tests cover:
 
 - `csbatch` job id parsing from `sbatch --parsable`
-- original and instrumented script snapshots
-- preservation of leading `#SBATCH` directives
-- sbatch command-line option passthrough
-- basic `sbatch --wrap` translation
-- batch program-finished marker ingestion
+- unchanged original script snapshots, including non-shell scripts
+- native handling of `#SBATCH` directives after blank/comment lines
+- exact sbatch argument, stdin, descriptor, output-byte and exit-status passthrough
+- native `sbatch --wrap`, help, version, test-only, quiet and wait behavior
+- legacy batch program-finished marker ingestion (no new trap is injected)
+- durable submission receipts, database-lock isolation and idempotent ingestion
 - stdout/stderr path parsing
 - background static MATLAB/Python submission analysis
 - git commit/status/diff capture

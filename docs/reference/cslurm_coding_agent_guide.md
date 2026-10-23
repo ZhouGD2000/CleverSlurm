@@ -1,5 +1,9 @@
 # CleverSlurm Job Tracking System: Coding Agent Implementation Guide
 
+> Historical design reference. The current native-first `csbatch` design
+> supersedes the script-instrumentation and forced-parsable proposals below.
+> See [current sbatch compatibility](../sbatch-compatibility.md).
+
 ## 0. Objective
 
 Build a server-side job-tracking system for Slurm workflows.

@@ -2,7 +2,7 @@
 
 ## Where the database may run
 
-Run database commands (`csbatch`, `cjobs`, `ctrack`, `csummarize`, `cnotify`,
+Run database commands (`cjobs`, `ctrack`, `csummarize`, `cnotify`,
 and `cweb`) on the management host where `CSLURM_ROOT/db.sqlite` is stored
 on a local filesystem. Use an SSH tunnel for the web console. The same home
 directory can be local XFS on that host and NFS on compute nodes: checking
@@ -13,6 +13,12 @@ selects the longest matching mountpoint. Database access on NFS, SMB/CIFS,
 Lustre, Ceph, GPFS, 9p and FUSE mounts is refused before opening SQLite.
 This is a guard against known network filesystems, not a universal storage
 certification; administrators must verify other platforms and filesystems.
+
+The `csbatch` CLI publishes receipts without opening SQLite, even when the
+database is locked, unavailable or network-mounted. A management-host worker
+or tracker imports these receipts later; its SQLite storage checks still apply.
+See [submission receipts and compatibility](sbatch-compatibility.md). The Python
+`submit_batch` helper attempts immediate ingestion but keeps the receipt on failure.
 
 New databases use SQLite's rollback journal (`DELETE`) with `synchronous=FULL`.
 Connections are closed on leaving their context. Busy-timeout and short-write

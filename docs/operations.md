@@ -2,8 +2,10 @@
 
 ## Durable background work
 
-`csbatch` records the submission, enqueues static analysis and (when enabled)
-submission summary work, and returns without waiting for either. There is one
+`csbatch` publishes a submission receipt without accessing SQLite. Workers and
+the tracker import it and atomically enqueue static analysis and (when enabled)
+submission summary work. See [receipt recovery and limits](sbatch-compatibility.md).
+The CLI returns without waiting for this work. There is one
 worker pool per `CSLURM_ROOT`. `[work].concurrency` defaults to 2 and is clamped
 to 1 through 8. A worker handles at most 100 items per invocation; later tracker
 runs resume the backlog. Summary work waits for pending/running static analysis
