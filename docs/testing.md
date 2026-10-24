@@ -8,6 +8,9 @@ A separate disposable Ubuntu runner installs Munge, MariaDB, `slurmdbd`,
 partition with real accounting, then runs the `real_slurm` marker.
 `CSLURM_REQUIRE_REAL_SLURM=true` makes missing daemons, rejected submissions or
 completion timeouts fail CI instead of silently skipping the integration tests.
+System-package setup runs non-interactively with bounded download timeouts and
+retries, and a five-minute step limit. A dependency-installation timeout fails
+the check; it does not count as a successful or skipped Slurm test.
 
 The setup script is restricted to root on GitHub Actions. Never run it on an
 existing cluster: it is for a disposable runner, not production installation.
