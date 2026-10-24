@@ -16,7 +16,8 @@ jobs:
       - uses: actions/setup-python@v5
         with:
           python-version: ${{ matrix.python }}
-      - run: python -m pip install -e . pytest
+      # Offline installer tests build wheels in the running Python environment.
+      - run: python -m pip install -e . pytest setuptools wheel
       - run: python -m pytest -q
   real-slurm:
     runs-on: ubuntu-24.04

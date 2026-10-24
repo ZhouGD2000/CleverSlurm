@@ -35,9 +35,17 @@ parity jobs. They use isolated roots, disable notifications, and never call
 Run:
 
 ```bash
+python3 -m pip install -e . pytest setuptools wheel
 python3 -m pytest -q
 python3 -m compileall -q src/cslurm
 ```
+
+The offline remote-installer tests build a wheel with `--no-build-isolation`.
+Install `setuptools` and `wheel` in the test interpreter itself: the isolated
+build dependencies used by `pip install -e .` do not remain in that environment.
+In particular, a fresh Python 3.12+ virtual environment does not supply these
+packaging tools automatically. The GitHub Actions unit-test matrix installs them
+explicitly as well.
 
 Run only fake Slurm tests:
 
