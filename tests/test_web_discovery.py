@@ -123,7 +123,8 @@ def test_detect_does_not_import_package(tmp_path):
     assert not (package / '__pycache__').exists()
 
 
-@pytest.mark.parametrize('output', ['not json', '{"status":"ok"}', 'x' * 270000])
+@pytest.mark.parametrize('output', ['not json', '{"status":"ok"}', 'x' * 270000],
+                         ids=['invalid-json', 'missing-environments', 'oversized-output'])
 def test_bad_or_oversized_detection_output_is_not_missing_install(fake_bin, output):
     from cslurm.web.discovery import discover
     from cslurm.web.remotes import RemoteError
